@@ -610,20 +610,43 @@ G/
 
 ## 11. Progress Tracker
 
+### Phase 0: Planning & Setup
 - [x] Data profiling and initial analysis complete
 - [x] Implementation plan written
-- [ ] Agent instructions file created
-- [ ] Project scaffolding set up
-- [ ] GitHub repository initialized
-- [ ] Data cleaning pipeline implemented
-- [ ] EDA analysis complete
-- [ ] NLP analysis implemented
-- [ ] Top 5 opportunities quantified
-- [ ] LangGraph agent pipeline built
-- [ ] Agent tools implemented
-- [ ] Streamlit app built
-- [ ] Visualizations created
-- [ ] Slide deck created
-- [ ] Screen recording done
+- [x] Agent instructions file created (`AGENT_INSTRUCTIONS.md`)
+- [x] Project scaffolding set up (30 files, full directory structure)
+- [x] GitHub repository initialized (local commit `c3d0731`)
+- [ ] GitHub remote created and pushed (private repo — pending auth)
+
+### Phase 1: Core Modules (Scaffolded — Ready for Implementation)
+- [x] `src/config.py` — Constants, branding, frustration patterns
+- [x] `src/data_cleaning.py` — Load, clean, quality report functions
+- [x] `src/analytics.py` — KPI summary, team/channel/category perf, outliers, correlations
+- [x] `src/nlp_analysis.py` — Sentiment, frustration detection, TF-IDF topic extraction
+- [x] `src/visualizations.py` — 12 Plotly chart functions + KPI card HTML
+
+### Phase 2: Agent Pipeline (Scaffolded — Ready for Implementation)
+- [x] `src/agent/state.py` — AgentState TypedDict, OpportunityItem, WeeklyBrief
+- [x] `src/agent/tools.py` — Tool wrappers for analytics & NLP functions
+- [x] `src/agent/nodes.py` — 6 pipeline nodes (ingest → quality → analysis → scoring → report)
+- [x] `src/agent/graph.py` — LangGraph StateGraph with fan-out/fan-in topology
+- [x] `src/agent/prompts.py` — Opportunity scoring, report generation, trend interpretation prompts
+
+### Phase 3: Frontend (Scaffolded — Ready for Implementation)
+- [x] `src/app/streamlit_app.py` — 5-tab app with caching and Groupon branding
+- [x] `src/app/components.py` — Tab render functions (Dashboard, Opportunities, Trends, NLP, Brief)
+- [x] `src/app/styles.py` — Custom CSS injection for Groupon green theme
+
+### Phase 4: Testing & Quality
+- [x] `tests/test_data_cleaning.py` — 5 tests (load, columns, market normalization, CSAT, resolution)
+- [x] `tests/test_analytics.py` — KPI, team perf, chatbot escalation tests
+- [x] `tests/test_nlp.py` — Sentiment and frustration detection tests
+- [ ] All tests passing with real data
 - [ ] Code reviewed and cleaned
+
+### Phase 5: Deliverables
+- [ ] EDA analysis complete (Jupyter notebook)
+- [ ] Top 5 opportunities quantified with dollar impact
+- [ ] Slide deck created (15 pages max)
+- [ ] Screen recording done (~4 min demo)
 - [ ] Final submission prepared
