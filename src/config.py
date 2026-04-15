@@ -77,10 +77,10 @@ STATUS_COLORS = {
 }
 
 # ---------------------------------------------------------------------------
-# LLM settings
+# LLM settings (Google Gemini — free tier)
 # ---------------------------------------------------------------------------
-LLM_MODEL_ANALYSIS = "claude-sonnet-4-20250514"
-LLM_MODEL_SIMPLE = "claude-haiku-3-20240307"
+LLM_MODEL_ANALYSIS = "gemini-2.0-flash"
+LLM_MODEL_SIMPLE = "gemini-2.0-flash-lite"
 LLM_TEMPERATURE = 0.1  # Low temperature for analytical consistency
 
 # ---------------------------------------------------------------------------

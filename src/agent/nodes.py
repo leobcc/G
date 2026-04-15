@@ -9,7 +9,7 @@ import logging
 from typing import Any
 
 import pandas as pd
-from langchain_anthropic import ChatAnthropic
+from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.messages import HumanMessage, SystemMessage
 
 from src.agent.prompts import (
@@ -36,12 +36,12 @@ from src.data_cleaning import clean_data, load_raw_data
 logger = logging.getLogger(__name__)
 
 
-def _get_llm(model: str | None = None) -> ChatAnthropic:
-    """Create an Anthropic LLM instance."""
-    return ChatAnthropic(
+def _get_llm(model: str | None = None) -> ChatGoogleGenerativeAI:
+    """Create a Google Gemini LLM instance (free tier)."""
+    return ChatGoogleGenerativeAI(
         model=model or LLM_MODEL_ANALYSIS,
         temperature=LLM_TEMPERATURE,
-        max_tokens=4096,
+        max_output_tokens=4096,
     )
 
 

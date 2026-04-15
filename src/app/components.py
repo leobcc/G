@@ -115,7 +115,7 @@ def render_opportunities_tab(analytics: dict) -> None:
             st.markdown(opp["description"])
 
     st.info(
-        "💡 Run the full LangGraph pipeline with your Anthropic API key "
+        "💡 Run the full LangGraph pipeline with your Google Gemini API key "
         "to get AI-generated, data-backed opportunity scoring."
     )
 
@@ -193,7 +193,7 @@ def render_weekly_brief_tab(analytics: dict, nlp_results: dict) -> None:
     st.subheader("📋 Weekly Operations Brief")
 
     st.info(
-        "💡 Connect your Anthropic API key and run the full LangGraph pipeline "
+        "💡 Connect your Google Gemini API key (free) and run the full LangGraph pipeline "
         "to generate an AI-written executive weekly brief. "
         "A preview based on static analysis is shown below."
     )

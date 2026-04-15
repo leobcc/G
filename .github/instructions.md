@@ -29,7 +29,7 @@ You are implementing an **AI-Powered Customer Operations Command Center** for a 
 - **Week 11 is partial** (only 224 tickets). Exclude from week-over-week comparisons or note the incompleteness. Use Weeks 7-10 as the four complete weeks.
 
 ### LLM/Agent Rules
-- Use **Claude** via `langchain-anthropic`. Model: `claude-sonnet-4-20250514` for analysis nodes, `claude-haiku-3-20240307` for simple formatting tasks.
+- Use **Google Gemini** via `langchain-google-genai`. Model: `gemini-2.0-flash` for analysis nodes, `gemini-2.0-flash-lite` for simple formatting tasks. Free tier: 15 RPM, 1M tokens/day.
 - All LLM outputs use **Pydantic structured output** — never parse free-text LLM responses.
 - API key loaded from `.env` file via `python-dotenv`. Never hardcode keys.
 - Tool functions must be **pure Python** with no LLM calls inside them — tools compute, the agent reasons.
@@ -47,8 +47,8 @@ You are implementing an **AI-Powered Customer Operations Command Center** for a 
 
 ```
 G/
-├── .env                          # ANTHROPIC_API_KEY=sk-...
-├── .env.example                  # ANTHROPIC_API_KEY=your-key-here
+├── .env                          # GOOGLE_API_KEY=...
+├── .env.example                  # GOOGLE_API_KEY=your-gemini-api-key-here
 ├── .gitignore
 ├── README.md
 ├── requirements.txt
@@ -139,9 +139,9 @@ COMPLETE_WEEKS = [7, 8, 9, 10]
 GROUPON_GREEN = "#53A318"
 GROUPON_DARK = "#1A1A1A"
 
-# LLM settings
-LLM_MODEL_ANALYSIS = "claude-sonnet-4-20250514"
-LLM_MODEL_SIMPLE = "claude-haiku-3-20240307"
+# LLM settings (Google Gemini — free tier)
+LLM_MODEL_ANALYSIS = "gemini-2.0-flash"
+LLM_MODEL_SIMPLE = "gemini-2.0-flash-lite"
 ```
 
 #### `src/data_cleaning.py` — DETAILED SPECIFICATION

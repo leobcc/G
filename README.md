@@ -21,7 +21,7 @@ This system ingests customer support ticket data (~120,000 tickets/month), runs 
 |---|---|
 | Language | Python 3.11+ |
 | Agent Framework | LangGraph |
-| LLM | Claude (Anthropic) |
+| LLM | Google Gemini (free tier) |
 | Data Processing | pandas, numpy |
 | NLP | TextBlob, scikit-learn |
 | Visualization | Plotly Express |
@@ -43,7 +43,7 @@ pip install -r requirements.txt
 
 ```bash
 cp .env.example .env
-# Edit .env and add your ANTHROPIC_API_KEY
+# Edit .env and add your GOOGLE_API_KEY
 ```
 
 ### 3. Run the app

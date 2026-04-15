@@ -473,7 +473,7 @@ Phase 3 (Month 5-6): Autonomous Operations
 |---|---|---|
 | **Language** | Python 3.11+ | Standard for data science + AI |
 | **Agent Framework** | LangGraph | Best-in-class for multi-step stateful workflows |
-| **LLM** | Claude (Anthropic) via `langchain-anthropic` | Strong reasoning, tool use, structured output |
+| **LLM** | Google Gemini via `langchain-google-genai` | Free tier (1M tokens/day), strong reasoning, tool use, structured output |
 | **Data Processing** | pandas, numpy | Standard, reliable |
 | **NLP** | TextBlob (sentiment), scikit-learn (TF-IDF, clustering) | Lightweight, no heavy model dependencies |
 | **Visualization** | Plotly Express | Interactive charts that work in Streamlit |
@@ -484,7 +484,7 @@ Phase 3 (Month 5-6): Autonomous Operations
 ### Dependencies (requirements.txt)
 ```
 langchain>=0.3.0
-langchain-anthropic>=0.3.0
+langchain-google-genai>=2.1.0
 langchain-core>=0.3.0
 langgraph>=0.3.0
 streamlit>=1.40.0
@@ -503,7 +503,7 @@ python-dotenv>=1.0.0
 
 ```
 G/
-├── .env                          # API keys (ANTHROPIC_API_KEY)
+├── .env                          # API keys (GOOGLE_API_KEY)
 ├── .env.example                  # Template for .env
 ├── .gitignore
 ├── README.md
@@ -587,7 +587,7 @@ G/
 
 | Risk | Mitigation |
 |---|---|
-| LLM API costs during development | Use claude-haiku for dev, sonnet for demo |
+| LLM API costs during development | Google Gemini free tier: 15 RPM, 1M tokens/day — zero cost |
 | LLM generates inconsistent output | Pydantic structured output throughout; validate with schemas |
 | Streamlit performance with 10K rows | Pre-compute all analytics, cache with @st.cache_data |
 | Agent takes too long to run | Parallelize independent analysis nodes in LangGraph |
