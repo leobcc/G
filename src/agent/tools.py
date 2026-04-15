@@ -54,14 +54,6 @@ def tool_weekly_trends(
     metrics: list[str] | None = None,
 ) -> str:
     """Compute weekly trends for key metrics."""
-    if metrics is None:
-        metrics = [
-            "first_response_min",
-            "resolution_min",
-            "csat_score",
-            "cost_usd",
-            "contacts_per_ticket",
-        ]
     result = compute_weekly_trends(df, metrics)
     return result.to_json(orient="records", indent=2)
 

@@ -4,11 +4,10 @@ AI-Powered Customer Operations Command Center
 5-tab dashboard: Dashboard | Opportunities | Trends | NLP | Weekly Brief
 """
 
-import json
 import logging
 
-import streamlit as st
 import pandas as pd
+import streamlit as st
 
 from src.app.components import (
     render_dashboard_tab,
@@ -18,8 +17,8 @@ from src.app.components import (
     render_weekly_brief_tab,
 )
 from src.app.styles import inject_custom_css
-from src.config import GROUPON_GREEN
-from src.data_cleaning import clean_data, load_raw_data
+from src.config import COMPLETE_WEEKS, GROUPON_GREEN, SCALE_FACTOR
+from src.data_cleaning import clean_data, get_data_quality_report, load_raw_data
 from src.analytics import (
     compute_category_performance,
     compute_channel_performance,
@@ -27,6 +26,7 @@ from src.analytics import (
     compute_kpi_summary,
     compute_team_performance,
     compute_weekly_trends,
+    run_correlation_analysis,
 )
 from src.nlp_analysis import compute_nlp_summary
 
@@ -43,42 +43,71 @@ st.set_page_config(
 )
 
 
-@st.cache_data(show_spinner="Loading ticket data...")
-def load_and_clean() -> tuple[pd.DataFrame, pd.DataFrame, dict]:
+@st.cache_data(show_spinner="Loading ticket data …")
+def load_and_clean() -> tuple[pd.DataFrame, pd.DataFrame, dict, dict]:
     """Load and clean data with caching."""
     raw = load_raw_data()
     clean, log = clean_data(raw)
-    return raw, clean, log
+    quality = get_data_quality_report(raw, clean)
+    return raw, clean, log, quality
 
 
-@st.cache_data(show_spinner="Running analytics...")
-def run_analytics(clean_json: str) -> dict:
-    """Run all non-NLP analytics with caching."""
-    df = pd.read_json(clean_json)
+@st.cache_data(show_spinner="Running analytics …")
+def run_analytics(_clean_df: pd.DataFrame) -> dict:
+    """Run all non-NLP analytics with caching.
+
+    Accepts a DataFrame directly (underscore prefix tells Streamlit
+    to skip hashing this unhashable arg).
+    """
+    df = _clean_df
+    kpi = compute_kpi_summary(df)
+
+    # Derived-metric trends (resolution_rate, avg_csat, etc.)
+    derived_trends = compute_weekly_trends(df)  # default = derived KPIs
+    # Raw-column trends for deep-dive selectors
+    raw_trends = compute_weekly_trends(
+        df,
+        [
+            "first_response_min",
+            "resolution_min",
+            "csat_score",
+            "cost_usd",
+            "contacts_per_ticket",
+        ],
+    )
+
+    teams = compute_team_performance(df)
+    channels = compute_channel_performance(df)
+    categories = compute_category_performance(df)
+    chatbot = compute_chatbot_escalation_analysis(df)
+
+    correlations = run_correlation_analysis(
+        df,
+        target="csat_score",
+        features=[
+            "first_response_min",
+            "resolution_min",
+            "cost_usd",
+            "contacts_per_ticket",
+        ],
+    )
+
     return {
-        "kpi": compute_kpi_summary(df),
-        "teams": compute_team_performance(df).to_dict("records"),
-        "channels": compute_channel_performance(df).to_dict("records"),
-        "categories": compute_category_performance(df).to_dict("records"),
-        "trends": compute_weekly_trends(
-            df,
-            [
-                "first_response_min",
-                "resolution_min",
-                "csat_score",
-                "cost_usd",
-                "contacts_per_ticket",
-            ],
-        ).to_dict("records"),
-        "chatbot": compute_chatbot_escalation_analysis(df),
+        "kpi": kpi,
+        "teams": teams.to_dict("records"),
+        "channels": channels.to_dict("records"),
+        "categories": categories.to_dict("records"),
+        "derived_trends": derived_trends.to_dict("records"),
+        "raw_trends": raw_trends.to_dict("records"),
+        "chatbot": chatbot,
+        "correlations": correlations,
     }
 
 
-@st.cache_data(show_spinner="Running NLP analysis...")
-def run_nlp(clean_json: str) -> dict:
+@st.cache_data(show_spinner="Running NLP analysis …")
+def run_nlp(_clean_df: pd.DataFrame) -> dict:
     """Run NLP analysis with caching."""
-    df = pd.read_json(clean_json)
-    return compute_nlp_summary(df)
+    return compute_nlp_summary(_clean_df)
 
 
 def main() -> None:
@@ -99,23 +128,44 @@ def main() -> None:
     )
 
     # --- Load data ---
-    raw_df, clean_df, cleaning_log = load_and_clean()
-    clean_json = clean_df.to_json(orient="records")
+    raw_df, clean_df, cleaning_log, quality_report = load_and_clean()
 
     # --- Run analytics ---
-    analytics = run_analytics(clean_json)
-    nlp_results = run_nlp(clean_json)
+    analytics = run_analytics(clean_df)
+    nlp_results = run_nlp(clean_df)
+
+    # --- Sidebar summary ---
+    with st.sidebar:
+        st.markdown("### 📋 Data Summary")
+        st.metric("Rows loaded", f"{len(clean_df):,}")
+        st.metric("Date range", f"Weeks {min(COMPLETE_WEEKS)}–{max(COMPLETE_WEEKS)}")
+        st.metric("Scale factor", f"{SCALE_FACTOR}×")
+
+        with st.expander("🔧 Data Quality"):
+            st.json(
+                {
+                    "rows": quality_report["total_rows"],
+                    "completeness": f"{quality_report['completeness_score']:.1%}",
+                    "fixes_applied": cleaning_log,
+                }
+            )
 
     # --- Tabs ---
     tab_dashboard, tab_opps, tab_trends, tab_nlp, tab_brief = st.tabs(
-        ["📈 Dashboard", "🎯 Opportunities", "📊 Trends", "💬 NLP Insights", "📋 Weekly Brief"]
+        [
+            "📈 Dashboard",
+            "🎯 Opportunities",
+            "📊 Trends",
+            "💬 NLP Insights",
+            "📋 Weekly Brief",
+        ]
     )
 
     with tab_dashboard:
         render_dashboard_tab(clean_df, analytics)
 
     with tab_opps:
-        render_opportunities_tab(analytics)
+        render_opportunities_tab(clean_df, analytics, nlp_results)
 
     with tab_trends:
         render_trends_tab(clean_df, analytics)
@@ -124,13 +174,13 @@ def main() -> None:
         render_nlp_tab(clean_df, nlp_results)
 
     with tab_brief:
-        render_weekly_brief_tab(analytics, nlp_results)
+        render_weekly_brief_tab(analytics, nlp_results, quality_report, cleaning_log)
 
     # --- Footer ---
     st.markdown("---")
     st.markdown(
         '<p style="text-align:center;color:#999;font-size:12px">'
-        "Prepared by: AI-Powered Ops Command Center | "
+        "Prepared by: AI-Powered Ops Command Center · "
         "Groupon Global Customer Operations</p>",
         unsafe_allow_html=True,
     )

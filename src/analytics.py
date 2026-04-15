@@ -6,7 +6,6 @@ All functions are pure — no side effects, no LLM calls.
 
 import logging
 
-import numpy as np
 import pandas as pd
 
 from src.config import COMPLETE_WEEKS
@@ -122,20 +121,53 @@ def compare_weeks(
 
 
 def compute_weekly_trends(
-    df: pd.DataFrame, metrics: list[str]
+    df: pd.DataFrame, metrics: list[str] | None = None,
 ) -> pd.DataFrame:
-    """Compute metrics for each complete week.
+    """Compute key metrics for each complete week.
+
+    If *metrics* is given they must be raw numeric column names suitable for
+    ``.mean()`` aggregation.  When *metrics* is ``None``, a standard set of
+    derived KPIs is computed: resolution_rate, escalation_rate,
+    abandonment_rate, avg_csat, avg_frt, avg_resolution_min, avg_cost,
+    ticket_count.
 
     Args:
         df: Clean DataFrame.
-        metrics: List of column names to aggregate.
+        metrics: Optional list of raw column names to aggregate.
 
     Returns:
-        DataFrame with weeks as rows and metrics as columns.
+        DataFrame with weeks as rows and metric columns.
     """
     weekly = df[df["week_number"].isin(COMPLETE_WEEKS)]
-    result = weekly.groupby("week_number")[metrics].mean().reset_index()
-    return result
+
+    if metrics is not None:
+        return weekly.groupby("week_number")[metrics].mean().reset_index()
+
+    # Compute standard derived KPIs per week
+    records = []
+    for wk, wdf in weekly.groupby("week_number"):
+        total = len(wdf)
+        records.append({
+            "week_number": wk,
+            "ticket_count": total,
+            "resolution_rate": round(wdf["is_resolved"].mean(), 4),
+            "escalation_rate": round(
+                (wdf["resolution_status"] == "escalated").mean(), 4
+            ),
+            "abandonment_rate": round(
+                (wdf["resolution_status"] == "abandoned").mean(), 4
+            ),
+            "avg_csat": round(
+                wdf.loc[wdf["csat_score"].between(1, 5), "csat_score"].mean(), 3
+            ),
+            "avg_frt": round(wdf["first_response_min"].dropna().mean(), 2),
+            "avg_resolution_min": round(
+                wdf.loc[wdf["resolution_min"] >= 0, "resolution_min"].dropna().mean(), 2
+            ),
+            "avg_cost": round(wdf["cost_usd"].mean(), 2),
+            "total_cost": round(wdf["cost_usd"].sum(), 2),
+        })
+    return pd.DataFrame(records)
 
 
 def compute_team_performance(df: pd.DataFrame) -> pd.DataFrame:
@@ -301,7 +333,6 @@ def run_correlation_analysis(
         Dict mapping feature name to correlation coefficient.
     """
     results = {}
-    target_values = df[target].dropna()
 
     for feature in features:
         valid = df[[target, feature]].dropna()

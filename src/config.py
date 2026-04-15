@@ -101,14 +101,15 @@ FRUSTRATION_PATTERNS = [
     r"fraud",
     r"stolen",
     r"rip.?off",
-    r"\b(ugh+|argh+)\b",
+    r"\bugh+\b",
+    r"\bargh+\b",
     r"!!+",
     r"\?\?+",
-    r"this is (a )?joke",
+    r"this is (?:a )?joke",
     r"can't believe",
     r"extremely frustrated",
     r"disgusted",
     r"furious",
     r"livid",
-    r"please help",
+    r"please\s+help\s+me\b.*!",  # "please help me!" with emphasis
 ]

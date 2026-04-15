@@ -1,6 +1,5 @@
 """Tests for the NLP analysis module."""
 
-import pytest
 
 from src.nlp_analysis import compute_sentiment, detect_frustration
 

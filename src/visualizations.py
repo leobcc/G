@@ -14,7 +14,6 @@ from src.config import (
     GROUPON_GREEN,
     GROUPON_LIGHT_GREEN,
     TEAM_COLORS,
-    STATUS_COLORS,
 )
 
 
@@ -78,7 +77,6 @@ def plot_team_comparison(
     Returns:
         Plotly Figure.
     """
-    colors = [TEAM_COLORS.get(t, GROUPON_GREEN) for t in team_df["team"]]
     fig = px.bar(
         team_df,
         x="team",

@@ -7,7 +7,6 @@ using lightweight libraries (TextBlob, scikit-learn TF-IDF).
 import logging
 import re
 
-import numpy as np
 import pandas as pd
 from textblob import TextBlob
 
@@ -43,16 +42,16 @@ def compute_sentiment(text: str) -> dict:
 def add_sentiment_columns(df: pd.DataFrame) -> pd.DataFrame:
     """Add sentiment polarity and subjectivity columns to DataFrame.
 
-    Uses the 'customer_text' column.
+    Uses the 'customer_message' column.
 
     Args:
-        df: DataFrame with 'customer_text' column.
+        df: DataFrame with 'customer_message' column.
 
     Returns:
         DataFrame with 'sentiment_polarity' and 'sentiment_subjectivity' columns added.
     """
     df = df.copy()
-    sentiments = df["customer_text"].apply(compute_sentiment)
+    sentiments = df["customer_message"].apply(compute_sentiment)
     df["sentiment_polarity"] = sentiments.apply(lambda x: x["polarity"])
     df["sentiment_subjectivity"] = sentiments.apply(lambda x: x["subjectivity"])
     return df
@@ -70,7 +69,7 @@ def detect_frustration(text: str) -> dict:
     if not isinstance(text, str) or not text.strip():
         return {"is_frustrated": False, "matched_patterns": [], "score": 0.0}
 
-    matches = _frustration_regex.findall(text.lower())
+    matches = [m.group() for m in _frustration_regex.finditer(text.lower())]
     # Count exclamation mark clusters as frustration signal
     exclamation_count = len(re.findall(r"!{2,}", text))
     caps_ratio = (
@@ -94,13 +93,13 @@ def add_frustration_columns(df: pd.DataFrame) -> pd.DataFrame:
     """Add frustration detection columns to DataFrame.
 
     Args:
-        df: DataFrame with 'customer_text' column.
+        df: DataFrame with 'customer_message' column.
 
     Returns:
         DataFrame with 'is_frustrated' and 'frustration_score' columns.
     """
     df = df.copy()
-    frustration = df["customer_text"].apply(detect_frustration)
+    frustration = df["customer_message"].apply(detect_frustration)
     df["is_frustrated"] = frustration.apply(lambda x: x["is_frustrated"])
     df["frustration_score"] = frustration.apply(lambda x: x["score"])
     return df
@@ -108,7 +107,7 @@ def add_frustration_columns(df: pd.DataFrame) -> pd.DataFrame:
 
 def extract_topics(
     df: pd.DataFrame,
-    text_column: str = "customer_text",
+    text_column: str = "customer_message",
     n_topics: int = 8,
     n_top_words: int = 10,
     max_features: int = 1000,
@@ -174,7 +173,7 @@ def compute_nlp_summary(df: pd.DataFrame) -> dict:
     """Run full NLP pipeline and return summary statistics.
 
     Args:
-        df: DataFrame with 'customer_text' column.
+        df: DataFrame with 'customer_message' column.
 
     Returns:
         Dict with sentiment distribution, frustration stats, topic summary.

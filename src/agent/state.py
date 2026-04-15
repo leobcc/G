@@ -4,7 +4,8 @@ The AgentState TypedDict flows through every node in the graph.
 Each node reads what it needs and writes its output key.
 """
 
-from typing import Any, TypedDict
+import operator
+from typing import Annotated, Any, TypedDict
 
 
 class DataQualityReport(TypedDict):
@@ -79,5 +80,5 @@ class AgentState(TypedDict):
 
     # --- Metadata ---
     current_step: str
-    errors: list[str]
-    execution_log: list[str]
+    errors: Annotated[list[str], operator.add]
+    execution_log: Annotated[list[str], operator.add]

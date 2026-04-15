@@ -1,12 +1,10 @@
 """Tests for the analytics module."""
 
-import pandas as pd
 import pytest
 
 from src.analytics import (
     compute_kpi_summary,
     compute_team_performance,
-    compute_channel_performance,
     compute_chatbot_escalation_analysis,
 )
 from src.data_cleaning import clean_data, load_raw_data

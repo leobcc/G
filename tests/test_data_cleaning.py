@@ -1,7 +1,5 @@
 """Tests for the data cleaning module."""
 
-import numpy as np
-import pandas as pd
 import pytest
 
 from src.data_cleaning import clean_data, load_raw_data
@@ -23,7 +21,7 @@ class TestLoadRawData:
             "ticket_id", "created_at", "market", "channel", "category",
             "subcategory", "priority", "assigned_team", "first_response_min",
             "resolution_min", "resolution_status", "csat_score",
-            "contacts_per_ticket", "cost_usd", "customer_text",
+            "contacts_per_ticket", "cost_usd", "customer_message",
         }
         assert expected.issubset(set(df.columns))
 

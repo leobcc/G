@@ -19,13 +19,26 @@ This system ingests customer support ticket data (~120,000 tickets/month), runs 
 
 | Component | Technology |
 |---|---|
-| Language | Python 3.11+ |
+| Language | Python 3.11+ (tested on 3.13) |
 | Agent Framework | LangGraph |
 | LLM | Google Gemini (free tier) |
 | Data Processing | pandas, numpy |
 | NLP | TextBlob, scikit-learn |
 | Visualization | Plotly Express |
 | Frontend | Streamlit |
+
+## Key Findings (from ~10,000 ticket sample)
+
+| Opportunity | Annual Impact | Effort | Timeline |
+|---|---|---|---|
+| Channel-Mix Optimization (Email → Chat) | $215,731 | Low | 4 weeks |
+| Reduce Abandoned Ticket Rate (8.3% → 4%) | $198,985 | Low | 3 weeks |
+| Reduce Chatbot Escalation (25.7% → 15%) | $192,408 | Medium | 8 weeks |
+| BPO Vendor B Performance Gap | $148,679 | Medium | 6 weeks |
+| CSAT Recovery Program | $1,382,400 | Medium | 6 weeks |
+| **Total** | **$2,138,203** | | |
+
+*Extrapolated from 10K sample using 12x scale factor to Groupon's ~120K tickets/month*
 
 ## Quick Start
 
@@ -35,7 +48,12 @@ This system ingests customer support ticket data (~120,000 tickets/month), runs 
 git clone <repo-url>
 cd G
 python -m venv .venv
-.venv\Scripts\activate  # Windows
+
+# Windows
+.venv\Scripts\activate
+# macOS/Linux
+source .venv/bin/activate
+
 pip install -r requirements.txt
 ```
 
@@ -43,45 +61,69 @@ pip install -r requirements.txt
 
 ```bash
 cp .env.example .env
-# Edit .env and add your GOOGLE_API_KEY
+# Edit .env and add your GOOGLE_API_KEY (free Gemini API key)
+# Get one at: https://aistudio.google.com/apikey
 ```
 
-### 3. Run the app
+### 3. Run the dashboard
 
 ```bash
-streamlit run src/app/streamlit_app.py
+# Windows (PowerShell)
+$env:PYTHONPATH = (Get-Location).Path
+streamlit run src/app/streamlit_app.py --server.headless true
+
+# macOS/Linux
+PYTHONPATH=$(pwd) streamlit run src/app/streamlit_app.py
 ```
 
 ### 4. Run tests
 
 ```bash
-python -m pytest tests/
+# Windows (PowerShell)
+$env:PYTHONPATH = (Get-Location).Path
+pytest tests/ -v
+
+# macOS/Linux
+PYTHONPATH=$(pwd) pytest tests/ -v
 ```
+
+### 5. Explore the EDA notebook
+
+Open `notebooks/eda_analysis.ipynb` in VS Code or Jupyter for the full exploratory analysis with interactive Plotly charts.
 
 ## Project Structure
 
 ```
-├── data/                    # Raw ticket data
+├── data/                    # Raw ticket data (10K tickets)
 ├── src/
 │   ├── config.py            # Configuration constants
 │   ├── data_cleaning.py     # Data loading and cleaning
-│   ├── analytics.py         # Statistical analysis
-│   ├── nlp_analysis.py      # NLP: sentiment, topics
+│   ├── analytics.py         # Statistical analysis functions
+│   ├── nlp_analysis.py      # NLP: sentiment, frustration, topics
 │   ├── visualizations.py    # Plotly chart functions
 │   ├── agent/               # LangGraph agent pipeline
-│   │   ├── state.py         # State definition
-│   │   ├── tools.py         # Agent tools
-│   │   ├── nodes.py         # Pipeline nodes
-│   │   ├── graph.py         # Graph assembly
-│   │   └── prompts.py       # LLM prompts
+│   │   ├── state.py         # TypedDict state definition
+│   │   ├── tools.py         # Agent tools (pure Python)
+│   │   ├── nodes.py         # Pipeline nodes (7 stages)
+│   │   ├── graph.py         # Graph assembly with fan-out/fan-in
+│   │   └── prompts.py       # LLM system prompts
 │   └── app/                 # Streamlit application
-│       ├── streamlit_app.py
-│       ├── components.py
-│       └── styles.py
-├── notebooks/               # EDA notebooks
-├── output/                  # Generated reports
-└── tests/                   # Test suite
+│       ├── streamlit_app.py # Main 5-tab dashboard
+│       ├── components.py    # Reusable UI components
+│       └── styles.py        # Custom CSS (Groupon branding)
+├── notebooks/
+│   └── eda_analysis.ipynb   # Full EDA with 22 sections
+├── output/                  # Generated reports and charts
+└── tests/                   # Test suite (25 tests)
 ```
+
+## Data Notes
+
+- **Source**: `data/option_a_ticket_data.csv` — 10,000 tickets, 16 columns
+- **Date range**: Feb 9 – Mar 10, 2026 (Weeks 7–11)
+- **Week 11**: Partial (224 tickets only) — excluded from week-over-week comparisons
+- **Scale factor**: 12x (sample → estimated Groupon monthly volume of 120K tickets)
+- **Cleaning**: 42 market labels normalized, 53 CSAT scores clamped, 71 negative resolution times fixed; no rows dropped
 
 ## Business Case
 

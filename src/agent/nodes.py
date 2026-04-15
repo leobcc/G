@@ -2,11 +2,16 @@
 
 Each function is a node in the analytical pipeline graph.
 Nodes read from AgentState, perform work, and return state updates.
+
+Because ``execution_log`` and ``errors`` use an ``operator.add`` reducer,
+each node returns a *list* of new entries and LangGraph concatenates them
+automatically — no need to read the existing list.
 """
 
 import json
 import logging
-from typing import Any
+import re
+from io import StringIO
 
 import pandas as pd
 from langchain_google_genai import ChatGoogleGenerativeAI
@@ -15,9 +20,8 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from src.agent.prompts import (
     OPPORTUNITY_SCORING_PROMPT,
     REPORT_GENERATION_PROMPT,
-    TREND_INTERPRETATION_PROMPT,
 )
-from src.agent.state import AgentState, OpportunityItem
+from src.agent.state import AgentState
 from src.agent.tools import (
     tool_category_performance,
     tool_channel_performance,
@@ -30,7 +34,7 @@ from src.agent.tools import (
     tool_team_performance,
     tool_weekly_trends,
 )
-from src.config import LLM_MODEL_ANALYSIS, LLM_MODEL_SIMPLE, LLM_TEMPERATURE
+from src.config import LLM_MODEL_ANALYSIS, LLM_TEMPERATURE, RAW_DATA_PATH
 from src.data_cleaning import clean_data, load_raw_data
 
 logger = logging.getLogger(__name__)
@@ -41,7 +45,7 @@ def _get_llm(model: str | None = None) -> ChatGoogleGenerativeAI:
     return ChatGoogleGenerativeAI(
         model=model or LLM_MODEL_ANALYSIS,
         temperature=LLM_TEMPERATURE,
-        max_output_tokens=4096,
+        max_output_tokens=8192,
     )
 
 
@@ -49,15 +53,14 @@ def _get_llm(model: str | None = None) -> ChatGoogleGenerativeAI:
 # Node 1: Data Ingestion
 # ---------------------------------------------------------------------------
 def node_ingest_data(state: AgentState) -> dict:
-    """Load raw data from CSV."""
-    logger.info("Node: ingest_data — loading CSV")
+    """Load raw data from CSV and store path + row count."""
+    logger.info("Node: ingest_data -- loading CSV")
     raw_df = load_raw_data()
     return {
-        "raw_df_path": str(raw_df),
+        "raw_df_path": str(RAW_DATA_PATH),
         "raw_row_count": len(raw_df),
         "current_step": "data_ingested",
-        "execution_log": state.get("execution_log", [])
-        + [f"Loaded {len(raw_df)} rows"],
+        "execution_log": [f"Loaded {len(raw_df):,} rows from CSV"],
     }
 
 
@@ -66,18 +69,20 @@ def node_ingest_data(state: AgentState) -> dict:
 # ---------------------------------------------------------------------------
 def node_data_quality(state: AgentState) -> dict:
     """Clean data and run quality checks."""
-    logger.info("Node: data_quality — cleaning data")
+    logger.info("Node: data_quality -- cleaning data")
     raw_df = load_raw_data()
     clean_df, cleaning_log = clean_data(raw_df)
     quality = json.loads(tool_data_quality(raw_df, clean_df))
     quality["cleaning_log"] = cleaning_log
 
     return {
-        "clean_df_serialized": clean_df.to_json(orient="records"),
+        "clean_df_serialized": clean_df.to_json(orient="records", date_format="iso"),
         "data_quality": quality,
         "current_step": "data_cleaned",
-        "execution_log": state.get("execution_log", [])
-        + [f"Cleaned data, fixed {sum(cleaning_log.values())} issues"],
+        "execution_log": [
+            f"Cleaned data: fixed {sum(cleaning_log.values())} issues "
+            f"({', '.join(f'{k}={v}' for k, v in cleaning_log.items())})"
+        ],
     }
 
 
@@ -87,7 +92,7 @@ def node_data_quality(state: AgentState) -> dict:
 def node_trend_analysis(state: AgentState) -> dict:
     """Compute all trend and performance metrics."""
     logger.info("Node: trend_analysis")
-    df = pd.read_json(state["clean_df_serialized"])
+    df = pd.read_json(StringIO(state["clean_df_serialized"]))
 
     kpi = json.loads(tool_compute_kpis(df))
     teams = json.loads(tool_team_performance(df))
@@ -95,6 +100,7 @@ def node_trend_analysis(state: AgentState) -> dict:
     categories = json.loads(tool_category_performance(df))
     trends = json.loads(tool_weekly_trends(df))
     correlations = json.loads(tool_correlation_analysis(df))
+    kpi["correlations"] = correlations
 
     return {
         "kpi_summary": kpi,
@@ -102,9 +108,7 @@ def node_trend_analysis(state: AgentState) -> dict:
         "team_performance": teams,
         "channel_performance": channels,
         "category_performance": categories,
-        "current_step": "trends_analyzed",
-        "execution_log": state.get("execution_log", [])
-        + ["Trend analysis complete"],
+        "execution_log": ["Trend analysis complete"],
     }
 
 
@@ -114,20 +118,27 @@ def node_trend_analysis(state: AgentState) -> dict:
 def node_anomaly_detection(state: AgentState) -> dict:
     """Detect anomalies and analyze chatbot escalations."""
     logger.info("Node: anomaly_detection")
-    df = pd.read_json(state["clean_df_serialized"])
+    df = pd.read_json(StringIO(state["clean_df_serialized"]))
 
     anomalies = {}
-    for col in ["first_response_min", "resolution_min", "cost_usd", "contacts_per_ticket"]:
+    for col in [
+        "first_response_min",
+        "resolution_min",
+        "cost_usd",
+        "contacts_per_ticket",
+    ]:
         anomalies[col] = json.loads(tool_find_anomalies(df, col))
 
     chatbot = json.loads(tool_chatbot_escalation(df))
 
+    total_outliers = sum(v["total_outliers"] for v in anomalies.values())
     return {
         "anomalies": anomalies,
         "chatbot_escalation": chatbot,
-        "current_step": "anomalies_detected",
-        "execution_log": state.get("execution_log", [])
-        + ["Anomaly detection complete"],
+        "execution_log": [
+            f"Anomaly detection complete: {total_outliers} outliers, "
+            f"chatbot escalation rate {chatbot.get('overall_escalation_rate', 'N/A')}"
+        ],
     }
 
 
@@ -137,14 +148,15 @@ def node_anomaly_detection(state: AgentState) -> dict:
 def node_nlp_analysis(state: AgentState) -> dict:
     """Run NLP pipeline on ticket text."""
     logger.info("Node: nlp_analysis")
-    df = pd.read_json(state["clean_df_serialized"])
+    df = pd.read_json(StringIO(state["clean_df_serialized"]))
     nlp = json.loads(tool_nlp_analysis(df))
 
     return {
         "nlp_summary": nlp,
-        "current_step": "nlp_analyzed",
-        "execution_log": state.get("execution_log", [])
-        + ["NLP analysis complete"],
+        "execution_log": [
+            f"NLP analysis complete: frustration rate {nlp.get('frustration_rate', 'N/A')}, "
+            f"avg sentiment {nlp.get('avg_sentiment_polarity', 'N/A')}"
+        ],
     }
 
 
@@ -156,16 +168,22 @@ def node_opportunity_scoring(state: AgentState) -> dict:
     logger.info("Node: opportunity_scoring")
     llm = _get_llm(LLM_MODEL_ANALYSIS)
 
+    # Build a concise context for the LLM
     context = json.dumps(
         {
-            "kpis": state["kpi_summary"],
-            "team_performance": state["team_performance"],
-            "chatbot_escalation": state["chatbot_escalation"],
-            "nlp_summary": state["nlp_summary"],
-            "anomalies": {
-                k: {"total_outliers": v["total_outliers"]}
-                for k, v in state["anomalies"].items()
+            "kpis": state.get("kpi_summary", {}),
+            "team_performance": state.get("team_performance", []),
+            "chatbot_escalation": state.get("chatbot_escalation", {}),
+            "nlp_summary": {
+                k: v
+                for k, v in state.get("nlp_summary", {}).items()
+                if k != "topics"  # topics can be large; omit for token saving
             },
+            "anomalies": {
+                k: {"total_outliers": v.get("total_outliers", 0)}
+                for k, v in state.get("anomalies", {}).items()
+            },
+            "weekly_trends": state.get("weekly_trends", []),
         },
         indent=2,
         default=str,
@@ -176,22 +194,28 @@ def node_opportunity_scoring(state: AgentState) -> dict:
         HumanMessage(content=f"Here is the analytical context:\n\n{context}"),
     ]
 
-    response = llm.invoke(messages)
-
-    # Parse LLM response into structured opportunities
     try:
-        opportunities = json.loads(response.content)
+        response = llm.invoke(messages)
+        content = response.content
+
+        # Strip markdown code fences if present
+        content = re.sub(r"^```(?:json)?\s*", "", content.strip())
+        content = re.sub(r"\s*```$", "", content.strip())
+
+        opportunities = json.loads(content)
         if isinstance(opportunities, dict) and "opportunities" in opportunities:
             opportunities = opportunities["opportunities"]
     except json.JSONDecodeError:
         logger.warning("Failed to parse LLM opportunity response as JSON")
         opportunities = []
+    except Exception as e:
+        logger.error("LLM call failed in opportunity_scoring: %s", e)
+        opportunities = []
 
     return {
         "opportunities": opportunities,
         "current_step": "opportunities_scored",
-        "execution_log": state.get("execution_log", [])
-        + [f"Identified {len(opportunities)} opportunities"],
+        "execution_log": [f"Identified {len(opportunities)} opportunities"],
     }
 
 
@@ -205,30 +229,47 @@ def node_report_generation(state: AgentState) -> dict:
 
     context = json.dumps(
         {
-            "kpis": state["kpi_summary"],
-            "team_performance": state["team_performance"],
-            "chatbot_escalation": state["chatbot_escalation"],
-            "nlp_summary": state.get("nlp_summary", {}),
+            "kpis": state.get("kpi_summary", {}),
+            "team_performance": state.get("team_performance", []),
+            "chatbot_escalation": state.get("chatbot_escalation", {}),
+            "nlp_summary": {
+                k: v
+                for k, v in state.get("nlp_summary", {}).items()
+                if k != "topics"
+            },
             "opportunities": state.get("opportunities", []),
             "anomalies": {
-                k: {"total_outliers": v["total_outliers"]}
+                k: {"total_outliers": v.get("total_outliers", 0)}
                 for k, v in state.get("anomalies", {}).items()
             },
+            "data_quality": {
+                "total_rows": state.get("data_quality", {}).get("total_rows"),
+                "completeness_score": state.get("data_quality", {}).get(
+                    "completeness_score"
+                ),
+                "cleaning_log": state.get("data_quality", {}).get("cleaning_log"),
+            },
+            "weekly_trends": state.get("weekly_trends", []),
         },
         indent=2,
         default=str,
     )
 
-    messages = [
-        SystemMessage(content=REPORT_GENERATION_PROMPT),
-        HumanMessage(content=f"Generate the weekly brief from this data:\n\n{context}"),
-    ]
-
-    response = llm.invoke(messages)
+    try:
+        messages = [
+            SystemMessage(content=REPORT_GENERATION_PROMPT),
+            HumanMessage(
+                content=f"Generate the weekly brief from this data:\n\n{context}"
+            ),
+        ]
+        response = llm.invoke(messages)
+        report = response.content
+    except Exception as e:
+        logger.error("LLM call failed in report_generation: %s", e)
+        report = f"# Report Generation Failed\n\nError: {e}"
 
     return {
-        "report_markdown": response.content,
+        "report_markdown": report,
         "current_step": "report_generated",
-        "execution_log": state.get("execution_log", [])
-        + ["Weekly brief generated"],
+        "execution_log": ["Weekly brief generated"],
     }
