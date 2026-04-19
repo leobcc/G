@@ -27,20 +27,33 @@ _BORDER_COLOR = "#d3d2ca"
 
 
 def _apply_branding(fig: go.Figure) -> go.Figure:
-    """Apply consistent warm branding to a figure."""
+    """Apply consistent warm branding to a figure.
+
+    Preserves legend and margin if the figure has already set them explicitly
+    (non-None values), so per-chart overrides won't be clobbered.
+    """
     update: dict[str, object] = dict(
         font=dict(family="sans-serif", size=12, color=_TEXT_DARK),
         plot_bgcolor=_BG_CREAM,
         paper_bgcolor=_BG_CREAM,
-        margin=dict(l=40, r=40, t=60, b=40),
-        legend=dict(
+    )
+
+    # Only apply default legend if none was explicitly set on the figure
+    existing_legend = fig.layout.legend
+    if not (existing_legend and existing_legend.y is not None):
+        update["legend"] = dict(
             orientation="h",
             yanchor="bottom",
             y=-0.2,
             xanchor="center",
             x=0.5,
-        ),
-    )
+        )
+
+    # Only apply default margin if none was explicitly set on the figure
+    existing_margin = fig.layout.margin
+    if not (existing_margin and existing_margin.b is not None):
+        update["margin"] = dict(l=40, r=40, t=60, b=40)
+
     # Only set title font when a title exists to avoid "undefined" rendering
     existing_title = getattr(fig.layout.title, "text", None) if fig.layout.title else None
     if existing_title:
@@ -120,8 +133,21 @@ def plot_team_comparison(
     )
     fig.update_traces(textposition="outside", cliponaxis=False)
     fig.update_yaxes(tickformat=".0%")
-    fig.update_xaxes(tickangle=-15)
-    fig.update_layout(bargap=0.3, height=400, yaxis_range=[0, team_df[metric].max() * 1.15])
+    fig.update_xaxes(tickangle=0)
+    fig.update_layout(
+        bargap=0.3,
+        height=420,
+        yaxis_range=[0, team_df[metric].max() * 1.15],
+        legend=dict(
+            orientation="h",
+            yanchor="top",
+            y=-0.25,
+            xanchor="center",
+            x=0.5,
+        ),
+        margin=dict(l=40, r=40, t=60, b=80),
+        xaxis_title=None,
+    )
     return _apply_branding(fig)
 
 

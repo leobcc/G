@@ -118,6 +118,8 @@ def render_dashboard_tab(df: pd.DataFrame, analytics: dict) -> None:
     cols2[3].metric(
         "Total Cost (Weekly)",
         f"${kpi['total_cost_usd']:,.0f}",
+        delta=_delta_str("total_cost_usd", fmt="money", prefix="$"),
+        delta_color="inverse",
     )
 
 
@@ -228,12 +230,7 @@ def render_opportunities_tab(
     agent_result: dict | None = None,
 ) -> None:
     """Render agent-identified improvement opportunities."""
-    st.subheader("Top Improvement Opportunities")
-    st.caption(
-        "AI-identified improvement opportunities from deterministic analytics & agent reasoning"
-    )
-
-    # Agent-generated intro paragraph framing the opportunities
+    # Agent-generated intro paragraph — rendered above the heading
     insights = _get_executive_insights()
     intro_text = insights.get("opportunities_intro", "")
     if intro_text:
@@ -243,6 +240,11 @@ def render_opportunities_tab(
             f'font-size: 0.95em; color: #3d3a2a;">{intro_text}</div>',
             unsafe_allow_html=True,
         )
+
+    st.subheader("Top Improvement Opportunities")
+    st.caption(
+        "AI-identified improvement opportunities from deterministic analytics & agent reasoning"
+    )
 
     # Use agent-generated opportunities (not hardcoded)
     if agent_result is None:
@@ -288,7 +290,7 @@ def render_opportunities_tab(
             p_label = str(priority)
 
         with st.expander(
-            f"#{rank}  {title}  |  {impact}  |  {p_label}",
+            f"{title}  |  {impact}  |  {p_label}",
             expanded=(i == 0),
         ):
             col1, col2, col3 = st.columns(3)
@@ -964,6 +966,127 @@ def _generate_markdown_brief(
     return data_section
 
 
+def _generate_html_bytes(markdown_text: str) -> bytes:
+    """Convert the brief Markdown into a styled standalone HTML document."""
+    import html as _html
+    import re as _re
+
+    # Minimal Markdown → HTML conversion (tables, bold, headers, bullets, hr)
+    lines = markdown_text.split("\n")
+    html_lines: list[str] = []
+    in_table = False
+    in_ul = False
+
+    for line in lines:
+        stripped = line.strip()
+
+        # Horizontal rule
+        if stripped in ("---", "***", "___"):
+            if in_ul:
+                html_lines.append("</ul>")
+                in_ul = False
+            if in_table:
+                html_lines.append("</tbody></table>")
+                in_table = False
+            html_lines.append("<hr>")
+            continue
+
+        # Table rows
+        if "|" in stripped and stripped.startswith("|"):
+            cells = [c.strip() for c in stripped.strip("|").split("|")]
+            # Skip separator rows like |---|---|
+            if all(_re.fullmatch(r":?-+:?", c) for c in cells):
+                continue
+            if not in_table:
+                if in_ul:
+                    html_lines.append("</ul>")
+                    in_ul = False
+                html_lines.append('<table><thead><tr>')
+                html_lines.extend(f"<th>{_html.escape(c)}</th>" for c in cells)
+                html_lines.append("</tr></thead><tbody>")
+                in_table = True
+            else:
+                html_lines.append("<tr>")
+                html_lines.extend(f"<td>{_html.escape(c)}</td>" for c in cells)
+                html_lines.append("</tr>")
+            continue
+
+        if in_table:
+            html_lines.append("</tbody></table>")
+            in_table = False
+
+        # Headers
+        if stripped.startswith("#"):
+            level = len(stripped) - len(stripped.lstrip("#"))
+            level = min(level, 6)
+            text = stripped.lstrip("# ").strip()
+            if in_ul:
+                html_lines.append("</ul>")
+                in_ul = False
+            html_lines.append(f"<h{level}>{_html.escape(text)}</h{level}>")
+            continue
+
+        # Bullet points
+        if stripped.startswith("- ") or stripped.startswith("* "):
+            if not in_ul:
+                html_lines.append("<ul>")
+                in_ul = True
+            text = stripped[2:].strip()
+            # Bold
+            text = _re.sub(r"\*\*(.+?)\*\*", r"<strong>\1</strong>", text)
+            html_lines.append(f"<li>{text}</li>")
+            continue
+
+        if in_ul:
+            html_lines.append("</ul>")
+            in_ul = False
+
+        # Empty lines
+        if not stripped:
+            html_lines.append("")
+            continue
+
+        # Regular paragraph with bold support
+        text = _re.sub(r"\*\*(.+?)\*\*", r"<strong>\1</strong>", _html.escape(stripped))
+        html_lines.append(f"<p>{text}</p>")
+
+    if in_ul:
+        html_lines.append("</ul>")
+    if in_table:
+        html_lines.append("</tbody></table>")
+
+    body = "\n".join(html_lines)
+
+    html_doc = f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ops Intelligence Brief — Groupon</title>
+<style>
+  body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+         max-width: 900px; margin: 2rem auto; padding: 0 1rem; color: #3d3a2a; line-height: 1.6; }}
+  h1,h2,h3 {{ color: #1a1a1a; }}
+  h1 {{ border-bottom: 3px solid #53A318; padding-bottom: 0.3em; }}
+  table {{ border-collapse: collapse; width: 100%; margin: 1rem 0; }}
+  th, td {{ border: 1px solid #ddd; padding: 8px 12px; text-align: left; }}
+  th {{ background: #53A318; color: white; }}
+  tr:nth-child(even) {{ background: #f9f9f6; }}
+  hr {{ border: none; border-top: 2px solid #e0e0e0; margin: 1.5rem 0; }}
+  ul {{ padding-left: 1.5rem; }}
+  li {{ margin-bottom: 0.3rem; }}
+  .footer {{ text-align: center; color: #999; font-size: 0.85em; margin-top: 3rem; }}
+</style>
+</head>
+<body>
+{body}
+<div class="footer">Prepared by AI-Powered Customer Ops Command Center — Groupon</div>
+</body>
+</html>"""
+
+    return html_doc.encode("utf-8")
+
+
 def _generate_word_bytes(markdown_text: str) -> bytes:
     """Convert the brief Markdown into a .docx Word document (in-memory bytes).
 
@@ -1406,7 +1529,7 @@ def render_weekly_brief_tab(
         export_md += ai_brief + "\n\n---\n\n"
     export_md += kpi_markdown
 
-    col_pdf, col_wd, col_md = st.columns(3)
+    col_pdf, col_wd, col_html, col_md = st.columns(4)
 
     with col_pdf:
         pdf_bytes = _generate_pdf_bytes(
@@ -1436,6 +1559,16 @@ def render_weekly_brief_tab(
             )
         else:
             st.button("Word (unavailable)", disabled=True)
+
+    with col_html:
+        html_bytes = _generate_html_bytes(export_md)
+        st.download_button(
+            label="HTML",
+            data=html_bytes,
+            file_name="ops_brief.html",
+            mime="text/html",
+            key="dl_html",
+        )
 
     with col_md:
         st.download_button(

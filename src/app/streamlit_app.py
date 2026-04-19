@@ -26,6 +26,15 @@ from dotenv import load_dotenv  # noqa: E402
 
 load_dotenv()
 
+# Streamlit Cloud injects secrets via st.secrets — push to os.environ for libs
+import os  # noqa: E402
+try:
+    for key, val in st.secrets.items():
+        if isinstance(val, str) and key not in os.environ:
+            os.environ[key] = val
+except Exception:
+    pass  # No secrets.toml available (local dev uses .env instead)
+
 from src.agent.graph import build_graph  # noqa: E402
 from src.analytics import (  # noqa: E402
     compute_category_performance,

@@ -11,6 +11,7 @@ ENV/
 
 # Environment variables
 .env
+.streamlit/secrets.toml
 
 # IDE
 .vscode/
@@ -33,6 +34,8 @@ build/
 # Output
 output/*.md
 output/*.html
+output/*
+slides/*
 
 # Misc
 *.log
