@@ -27,6 +27,7 @@ class TestGraphCompilation:
             "nlp_analysis",
             "opportunity_scoring",
             "report_generation",
+            "executive_insights",
             "__start__",
             "__end__",
         }
@@ -47,6 +48,7 @@ class TestAgentState:
             "kpi_summary",
             "opportunities",
             "report_markdown",
+            "executive_insights",
             "execution_log",
         ]
         for key in required_keys:

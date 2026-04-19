@@ -1,1 +1,1 @@
-# Streamlit application for AI-Powered Ops Command Center
+# Streamlit application for AI-Powered Customer Ops Command Center

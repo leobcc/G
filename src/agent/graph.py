@@ -11,6 +11,7 @@ from langgraph.graph import END, StateGraph
 from src.agent.nodes import (
     node_anomaly_detection,
     node_data_quality,
+    node_executive_insights,
     node_ingest_data,
     node_nlp_analysis,
     node_opportunity_scoring,
@@ -38,6 +39,8 @@ def build_graph() -> StateGraph:
             ↓
         report_generation
             ↓
+        executive_insights
+            ↓
            END
 
     Returns:
@@ -53,6 +56,7 @@ def build_graph() -> StateGraph:
     graph.add_node("nlp_analysis", node_nlp_analysis)
     graph.add_node("opportunity_scoring", node_opportunity_scoring)
     graph.add_node("report_generation", node_report_generation)
+    graph.add_node("executive_insights", node_executive_insights)
 
     # Set entry point
     graph.set_entry_point("ingest_data")
@@ -70,9 +74,11 @@ def build_graph() -> StateGraph:
     graph.add_edge("anomaly_detection", "opportunity_scoring")
     graph.add_edge("nlp_analysis", "opportunity_scoring")
 
-    # Sequential: opportunities → report → END
+    # Sequential: opportunities → report → insights → END
+    # (Sequential to avoid Groq rate-limit 429s on free tier)
     graph.add_edge("opportunity_scoring", "report_generation")
-    graph.add_edge("report_generation", END)
+    graph.add_edge("report_generation", "executive_insights")
+    graph.add_edge("executive_insights", END)
 
     return graph.compile()
 
@@ -103,6 +109,7 @@ def run_pipeline() -> dict:
         "opportunities": [],
         "weekly_brief": {},
         "report_markdown": "",
+        "executive_insights": {},
         "current_step": "initialized",
         "errors": [],
         "execution_log": [],

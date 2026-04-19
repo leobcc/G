@@ -29,16 +29,16 @@ This system ingests customer support ticket data (~120,000 tickets/month), runs 
 
 ## Key Findings (from ~10,000 ticket sample)
 
-| Opportunity | Annual Impact | Effort | Timeline |
-|---|---|---|---|
-| Channel-Mix Optimization (Email → Chat) | $215,731 | Low | 4 weeks |
-| Reduce Abandoned Ticket Rate (8.3% → 4%) | $198,985 | Low | 3 weeks |
-| Reduce Chatbot Escalation (25.7% → 15%) | $192,408 | Medium | 8 weeks |
-| BPO Vendor B Performance Gap | $148,679 | Medium | 6 weeks |
-| CSAT Recovery Program | $1,382,400 | Medium | 6 weeks |
-| **Total** | **$2,138,203** | | |
+| # | Opportunity | Annual Impact | Confidence | Priority | Effort | Timeline |
+|---|---|---|---|---|---|---|
+| 1 | Email → Chat Deflection (20% of email) | $215,731 | ★★★ | P0 | Low | 4 weeks |
+| 2 | Chatbot Escalation Reduction (25.7% → 15%) | $192,408 | ★★★ | P0 | Low | 4 weeks |
+| 3 | Abandoned Ticket Prevention (8.3% → 4%) | $199,861 | ★★☆ | P0 | Medium | 6 weeks |
+| 4 | BPO Vendor B Quality Program (CSAT 2.99 → 3.24) | $49,561 | ★★☆ | P1 | Medium | 6 weeks |
+| 5 | Proactive CSAT Recovery (10% of detractors) | $184,176 | ★☆☆ | P2 | Medium | 6 weeks |
+| | **Total** | **$841,737** | | | | |
 
-*Extrapolated from 10K sample using 12x scale factor to Groupon's ~120K tickets/month*
+*Extrapolated from 10K sample using 144× multiplier (12× scale to 120K/month × 12 months). Confidence tiers: ★★★ = direct cost savings, ★★☆ = mixed hard + behavioral, ★☆☆ = revenue protection estimates.*
 
 ## Quick Start
 
@@ -61,8 +61,8 @@ pip install -r requirements.txt
 
 ```bash
 cp .env.example .env
-# Edit .env and add your GOOGLE_API_KEY (free Gemini API key)
-# Get one at: https://aistudio.google.com/apikey
+# Edit .env and add your GROQ_API_KEY (free Groq API key)
+# Get one at: https://console.groq.com/keys
 ```
 
 ### 3. Run the dashboard
@@ -123,7 +123,8 @@ Open `notebooks/eda_analysis.ipynb` in VS Code or Jupyter for the full explorato
 - **Date range**: Feb 9 – Mar 10, 2026 (Weeks 7–11)
 - **Week 11**: Partial (224 tickets only) — excluded from week-over-week comparisons
 - **Scale factor**: 12x (sample → estimated Groupon monthly volume of 120K tickets)
-- **Cleaning**: 42 market labels normalized, 53 CSAT scores clamped, 71 negative resolution times fixed; no rows dropped
+- **Cleaning**: 31 market labels normalized, 53 CSAT scores clamped, 71 negative resolution times fixed; no rows dropped
+- **Imputation**: KNN (k=5, distance-weighted) for CSAT and FRT; resolution time for abandoned/pending tickets remains NaN (structurally absent)
 
 ## Business Case
 

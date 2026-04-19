@@ -48,39 +48,61 @@ COMPLETE_WEEKS = [7, 8, 9, 10]
 # Branding
 # ---------------------------------------------------------------------------
 GROUPON_GREEN = "#53A318"
-GROUPON_DARK = "#1A1A1A"
+GROUPON_DARK = "#3d3a2a"          # warm dark olive (Anthropic-inspired)
 GROUPON_LIGHT_GREEN = "#7BC74D"
 
-# Color palette for charts
+# Warm theme palette (matches .streamlit/config.toml)
+THEME_BG = "#fdfdf8"              # warm cream background
+THEME_SECONDARY_BG = "#ecebe3"    # warm beige secondary
+THEME_BORDER = "#d3d2ca"          # warm gray border
+THEME_SIDEBAR_BG = "#f0f0ec"      # sidebar background
+
+# ---------------------------------------------------------------------------
+# Color palette — professional, cohesive palette anchored on Groupon green
+# ---------------------------------------------------------------------------
 CHART_COLORS = [
-    "#53A318",  # Groupon green
-    "#2196F3",  # Blue
-    "#FF9800",  # Orange
-    "#E91E63",  # Pink
-    "#9C27B0",  # Purple
-    "#00BCD4",  # Cyan
-    "#FF5722",  # Deep orange
+    "#53A318",  # Groupon green (primary)
+    "#1B6B9A",  # Deep teal-blue
+    "#E8793A",  # Warm tangerine
+    "#6B4C9A",  # Muted purple
+    "#2E9E8F",  # Sea green
+    "#C44D56",  # Muted crimson
+    "#4A7C3F",  # Forest green
 ]
 
 TEAM_COLORS = {
-    "in_house": "#53A318",
-    "bpo_vendorA": "#2196F3",
-    "bpo_vendorB": "#FF9800",
-    "ai_chatbot": "#9C27B0",
+    "in_house": "#53A318",    # Groupon green — best performer
+    "bpo_vendorA": "#1B6B9A", # Deep teal-blue
+    "bpo_vendorB": "#E8793A", # Warm tangerine
+    "ai_chatbot": "#6B4C9A",  # Muted purple
 }
 
 STATUS_COLORS = {
-    "resolved": "#53A318",
-    "escalated": "#FF9800",
-    "abandoned": "#E91E63",
-    "pending": "#9E9E9E",
+    "resolved": "#53A318",   # Green — success
+    "escalated": "#E8793A",  # Tangerine — warning
+    "abandoned": "#C44D56",  # Crimson — danger
+    "pending": "#8C8C8C",    # Neutral grey
 }
 
+# Sentiment-specific colors
+SENTIMENT_COLORS = {
+    "positive": "#53A318",
+    "neutral": "#8C8C8C",
+    "negative": "#C44D56",
+}
+
+# Sequential palette for heatmaps / gradients (low → high)
+HEATMAP_SCALE = [
+    [0, "#C44D56"],     # Bad (red tone)
+    [0.5, "#F5D660"],   # Middle (warm yellow)
+    [1, "#53A318"],     # Good (green)
+]
+
 # ---------------------------------------------------------------------------
-# LLM settings (Google Gemini — free tier)
+# LLM settings (Groq — free tier, Llama 4 Scout: 500K TPD, 30K TPM, 30 RPM)
 # ---------------------------------------------------------------------------
-LLM_MODEL_ANALYSIS = "gemini-2.0-flash"
-LLM_MODEL_SIMPLE = "gemini-2.0-flash-lite"
+LLM_MODEL_ANALYSIS = "meta-llama/llama-4-scout-17b-16e-instruct"
+LLM_MODEL_SIMPLE = "meta-llama/llama-4-scout-17b-16e-instruct"
 LLM_TEMPERATURE = 0.1  # Low temperature for analytical consistency
 
 # ---------------------------------------------------------------------------

@@ -63,6 +63,9 @@ class AgentState(TypedDict):
     channel_performance: list[dict]
     category_performance: list[dict]
     week_over_week: dict[str, dict]
+    wow_kpis: dict[str, Any]           # WoW deltas from compute_wow_kpis()
+    week_date_ranges: dict[int, str]   # week_number -> "Feb 9 - Feb 15"
+    complete_weeks: list[int]           # dynamically detected complete weeks
 
     # --- Phase 3b: Anomaly Detection ---
     anomalies: dict[str, Any]
@@ -77,6 +80,7 @@ class AgentState(TypedDict):
     # --- Phase 5: Report Generation ---
     weekly_brief: WeeklyBrief
     report_markdown: str
+    executive_insights: dict[str, str]  # LLM-generated plain-language insights
 
     # --- Metadata ---
     current_step: str
