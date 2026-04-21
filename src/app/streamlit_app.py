@@ -12,6 +12,7 @@ import logging
 import sys
 import time
 from pathlib import Path
+from typing import Callable
 
 # Ensure the project root is on sys.path so `from src.*` imports resolve
 # regardless of how Streamlit is launched (e.g. `streamlit run src/app/streamlit_app.py`).
@@ -45,6 +46,7 @@ from src.analytics import (  # noqa: E402
     compute_week_date_ranges,
     compute_weekly_trends,
     compute_wow_kpis,
+    find_statistical_outliers,
     run_correlation_analysis,
 )
 from src.app.components import (  # noqa: E402
@@ -66,6 +68,26 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 _LOGO_PATH = Path(__file__).resolve().parents[1] / "assets" / "logo.png"
 _PAGES = ["Dashboard", "NLP Insights", "Trends", "Opportunities", "Weekly Brief"]
+_AGENT_NODE_ORDER = [
+    "ingest_data",
+    "data_quality",
+    "trend_analysis",
+    "anomaly_detection",
+    "nlp_analysis",
+    "opportunity_scoring",
+    "report_generation",
+    "executive_insights",
+]
+_AGENT_NODE_LABELS = {
+    "ingest_data": "Ingesting ticket data",
+    "data_quality": "Cleaning and validating data",
+    "trend_analysis": "Computing trend analysis",
+    "anomaly_detection": "Detecting anomalies",
+    "nlp_analysis": "Running NLP analysis",
+    "opportunity_scoring": "Scoring opportunities (agentic)",
+    "report_generation": "Generating weekly brief",
+    "executive_insights": "Generating executive insights",
+}
 
 # Session-state keys managed by this module (used for cleanup)
 _STATE_KEYS = [
@@ -128,6 +150,16 @@ def _compute_analytics(clean_df: pd.DataFrame, complete_weeks: list[int] | None 
     channels = compute_channel_performance(complete_df)
     categories = compute_category_performance(complete_df)
     chatbot = compute_chatbot_escalation_analysis(complete_df)
+    anomalies = {}
+    for col in ["first_response_min", "resolution_min", "cost_usd", "contacts_per_ticket"]:
+        outliers = find_statistical_outliers(clean_df, col, method="iqr", threshold=1.5)
+        anomalies[col] = {
+            "total_outliers": len(outliers),
+            "column": col,
+            "method": "iqr",
+            "threshold": 1.5,
+            "sample": outliers.head(10).to_dict("records"),
+        }
     correlations = run_correlation_analysis(
         complete_df,
         target="csat_score",
@@ -148,6 +180,7 @@ def _compute_analytics(clean_df: pd.DataFrame, complete_weeks: list[int] | None 
         "categories": categories.to_dict("records"),
         "derived_trends": derived_trends.to_dict("records"),
         "raw_trends": raw_trends.to_dict("records"),
+        "anomalies": anomalies,
         "chatbot": chatbot,
         "correlations": correlations,
         "week_date_ranges": week_date_ranges,
@@ -155,8 +188,15 @@ def _compute_analytics(clean_df: pd.DataFrame, complete_weeks: list[int] | None 
     }
 
 
-def _run_agent(data_path: str) -> dict | None:
-    """Run the LangGraph agent pipeline and return the final state dict."""
+def _run_agent(
+    data_path: str,
+    precomputed_state: dict | None = None,
+    on_event: Callable[[str, dict], None] | None = None,
+) -> dict | None:
+    """Run the LangGraph agent pipeline and return the final state dict.
+
+    Streams node updates so the caller can show live progress during execution.
+    """
     try:
         graph = build_graph()
         initial_state = {
@@ -164,7 +204,29 @@ def _run_agent(data_path: str) -> dict | None:
             "execution_log": [],
             "errors": [],
         }
-        return graph.invoke(initial_state)
+        if precomputed_state:
+            initial_state.update(precomputed_state)
+        final_state = dict(initial_state)
+
+        for update in graph.stream(initial_state, stream_mode="updates"):
+            if not isinstance(update, dict):
+                continue
+
+            for node_name, delta in update.items():
+                if not isinstance(delta, dict):
+                    continue
+
+                if on_event is not None:
+                    on_event(node_name, delta)
+
+                for key, value in delta.items():
+                    if key in ("execution_log", "errors") and isinstance(value, list):
+                        final_state.setdefault(key, [])
+                        final_state[key].extend(value)
+                    else:
+                        final_state[key] = value
+
+        return final_state
     except Exception:
         logger.exception("Agent pipeline failed")
         return None
@@ -251,42 +313,121 @@ def _run_analysis() -> None:
     st.header("Analyzing Ticket Data")
     st.caption(f"Source: {source_name}")
 
-    with st.status("Running analysis pipeline ...", expanded=True) as status:
-        # Step 1 — Data loading & cleaning
-        st.write("Loading and cleaning data ...")
+    with st.status("Running unified agent pipeline ...", expanded=True) as status:
+        precompute_labels = [
+            "Precompute: load and clean data",
+            "Precompute: compute deterministic analytics",
+            "Precompute: run deterministic NLP",
+            "Handoff: seed LangGraph with precomputed context",
+        ]
+        total_steps = len(precompute_labels) + len(_AGENT_NODE_ORDER)
+        completed_steps = 0
+        graph_nodes_seen: set[str] = set()
+
+        pipeline_progress = st.progress(0, text=f"Agent pipeline step 0/{total_steps}: starting")
+        pipeline_activity = st.empty()
+        activity_lines: list[str] = []
+
+        def _render_activity() -> None:
+            if not activity_lines:
+                return
+            recent = activity_lines[-10:]
+            activity_md = "\n".join(f"- {line}" for line in recent)
+            pipeline_activity.markdown(f"**Live agent pipeline activity**\n\n{activity_md}")
+
+        def _record_step(label: str, detail: str | None = None) -> None:
+            nonlocal completed_steps
+            completed_steps += 1
+            pct = int((completed_steps / total_steps) * 100)
+            pipeline_progress.progress(
+                pct,
+                text=f"Agent pipeline step {completed_steps}/{total_steps}: {label}",
+            )
+            if detail:
+                activity_lines.append(detail)
+                _render_activity()
+
+        # Step 1 — Data loading & cleaning (shown as agent pipeline stage)
         raw = load_raw_data(data_path)
         clean, log = clean_data(raw)
         quality = get_data_quality_report(raw, clean)
         complete_weeks = detect_complete_weeks(clean)
-        st.write(
-            f"Loaded **{len(raw):,}** tickets — fixed **{sum(log.values()):,}** data issues "
-            f"({len(complete_weeks)} complete weeks detected)"
+        _record_step(
+            precompute_labels[0],
+            f"Loaded {len(raw):,} tickets — fixed {sum(log.values()):,} data issues "
+            f"({len(complete_weeks)} complete weeks detected)",
         )
 
-        # Step 2 — Statistical analytics
-        st.write("Computing statistical analytics ...")
+        # Step 2 — Statistical analytics (shown as agent pipeline stage)
         analytics = _compute_analytics(clean, complete_weeks=complete_weeks)
-        st.write(
-            f"Analyzed **{len(analytics['teams'])}** teams, "
-            f"**{len(analytics['channels'])}** channels, "
-            f"**{len(analytics['categories'])}** categories"
+        _record_step(
+            precompute_labels[1],
+            f"Analyzed {len(analytics['teams'])} teams, "
+            f"{len(analytics['channels'])} channels, {len(analytics['categories'])} categories",
         )
 
-        # Step 3 — NLP
-        st.write("Running NLP analysis ...")
+        # Step 3 — NLP (shown as agent pipeline stage)
         nlp = compute_nlp_summary(clean)
         frustration = nlp.get("frustration_rate", 0)
-        st.write(
-            f"Sentiment analysis complete — **{frustration:.1%}** frustration rate detected"
+        _record_step(
+            precompute_labels[2],
+            f"Deterministic NLP complete — frustration rate {frustration:.1%}",
         )
 
-        # Step 4 — AI Agent
-        st.write("Running AI agent pipeline (generating executive brief) ...")
-        agent = _run_agent(data_path)
+        # Step 4 — AI Agent (graph) with precomputed handoff
+        precomputed_agent_state = {
+            "raw_row_count": len(raw),
+            "clean_df_serialized": clean.to_json(orient="records", date_format="iso"),
+            "data_quality": quality,
+            "kpi_summary": analytics.get("kpi", {}),
+            "weekly_trends": analytics.get("derived_trends", []),
+            "team_performance": analytics.get("teams", []),
+            "channel_performance": analytics.get("channels", []),
+            "category_performance": analytics.get("categories", []),
+            "wow_kpis": analytics.get("wow", {}),
+            "week_date_ranges": analytics.get("week_date_ranges", {}),
+            "complete_weeks": analytics.get("complete_weeks", []),
+            "anomalies": analytics.get("anomalies", {}),
+            "chatbot_escalation": analytics.get("chatbot", {}),
+            "nlp_summary": nlp,
+        }
+        _record_step(
+            precompute_labels[3],
+            "Precomputed deterministic context passed to LangGraph",
+        )
+
+        def _on_agent_event(node_name: str, delta: dict) -> None:
+            nonlocal completed_steps
+            if node_name not in graph_nodes_seen:
+                graph_nodes_seen.add(node_name)
+                completed_steps += 1
+
+            pct = int((completed_steps / total_steps) * 100)
+            label = _AGENT_NODE_LABELS.get(node_name, node_name.replace("_", " ").title())
+            pipeline_progress.progress(
+                pct,
+                text=f"Agent pipeline step {completed_steps}/{total_steps}: {label}",
+            )
+
+            if isinstance(delta.get("execution_log"), list):
+                activity_lines.extend(delta["execution_log"])
+            if isinstance(delta.get("errors"), list):
+                activity_lines.extend([f"ERROR: {err}" for err in delta["errors"]])
+            _render_activity()
+
+        agent = _run_agent(
+            data_path,
+            precomputed_state=precomputed_agent_state,
+            on_event=_on_agent_event,
+        )
         if agent and agent.get("report_markdown"):
-            st.write("AI executive brief generated successfully")
+            pipeline_progress.progress(100, text=f"Agent pipeline step {total_steps}/{total_steps}: complete")
+            activity_lines.append("AI executive brief generated successfully")
+            _render_activity()
         else:
-            st.write("AI brief unavailable — using data-driven fallback")
+            pipeline_progress.progress(100, text=f"Agent pipeline step {total_steps}/{total_steps}: fallback mode")
+            activity_lines.append("AI brief unavailable — using deterministic fallback")
+            _render_activity()
 
         status.update(label="Analysis complete!", state="complete", expanded=False)
 

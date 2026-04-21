@@ -1,137 +1,181 @@
 # AI-Powered Customer Operations Command Center
 
-An AI-powered Operations Intelligence system for Groupon's Customer Operations. Automatically analyzes support ticket data and produces weekly intelligence briefs with actionable improvement opportunities.
+This repository analyzes customer support ticket data, runs an agentic weekly ops pipeline, and generates a structured **Ops Intelligence Brief** with the top improvement opportunities, trend changes, and recommended actions.
 
-## Overview
+## What this repo includes
 
-This system ingests customer support ticket data (~120,000 tickets/month), runs a multi-step analytical pipeline using an agentic AI architecture (LangGraph), and produces a structured weekly "Ops Intelligence Brief" identifying the top 5 improvement opportunities — each quantified by business impact and paired with actionable recommendations.
+- **Exploratory analysis** in [notebooks/eda_analysis.ipynb](notebooks/eda_analysis.ipynb)
+- **Interactive Streamlit app** in [src/app/streamlit_app.py](src/app/streamlit_app.py)
+- **Agentic workflow** in [src/agent](src/agent)
+- **Deterministic analytics + NLP** in [src](src)
+- **Tests** in [tests](tests)
+- **Slide / roadmap content** in [slides](slides)
 
-## Features
+## Main capabilities
 
-- **Automated Data Cleaning**: Handles messy, real-world data with missing values, inconsistencies, and edge cases
-- **Multi-Step Agent Pipeline**: LangGraph-powered agent with 7 analysis stages running in parallel where possible
-- **NLP Analysis**: Sentiment scoring, frustration detection, and topic extraction from customer messages
-- **Interactive Dashboard**: Streamlit-based UI with Plotly charts for exploring insights
-- **Weekly Intelligence Brief**: Structured Markdown report with KPIs, opportunities, and watch list
-- **Week-over-Week Comparison**: Trend detection and anomaly flagging
+- Cleans messy support ticket data with explicit handling of invalid and missing values
+- Computes KPI summaries, weekly trends, team/channel/category performance, and outliers
+- Analyzes customer text for sentiment, frustration, and topic signals
+- Runs a LangGraph pipeline to synthesize findings into opportunities and a weekly brief
+- Presents results in a 5-tab Streamlit dashboard
 
-## Tech Stack
+## App overview
 
-| Component | Technology |
+The app includes five views:
+
+- **Dashboard** — KPIs, performance comparisons, and trends
+- **NLP Insights** — sentiment, frustration, and text patterns
+- **Trends** — week-over-week movements and anomaly review
+- **Opportunities** — prioritized improvement actions with impact estimates
+- **Weekly Brief** — a generated markdown summary for leadership review
+
+## Architecture
+
+The project has two main layers:
+
+### 1. Deterministic analytics
+Core modules:
+- [src/data_cleaning.py](src/data_cleaning.py)
+- [src/analytics.py](src/analytics.py)
+- [src/nlp_analysis.py](src/nlp_analysis.py)
+- [src/visualizations.py](src/visualizations.py)
+
+### 2. Agentic synthesis
+Core modules:
+- [src/agent/graph.py](src/agent/graph.py)
+- [src/agent/nodes.py](src/agent/nodes.py)
+- [src/agent/tools.py](src/agent/tools.py)
+- [src/agent/prompts.py](src/agent/prompts.py)
+
+Pipeline flow:
+
+**ingest → data quality → parallel analysis (trends / anomalies / NLP) → opportunity scoring → report generation → executive insights**
+
+## Tech stack
+
+| Component | Implementation |
 |---|---|
-| Language | Python 3.11+ (tested on 3.13) |
-| Agent Framework | LangGraph |
-| LLM | Google Gemini (free tier) |
-| Data Processing | pandas, numpy |
-| NLP | TextBlob, scikit-learn |
-| Visualization | Plotly Express |
+| Language | Python 3.11+ |
 | Frontend | Streamlit |
+| Agent Framework | LangGraph + LangChain |
+| LLM | Groq (`meta-llama/llama-4-scout-17b-16e-instruct`) |
+| Data Processing | pandas, numpy |
+| Statistics / ML | scipy, scikit-learn |
+| NLP | vaderSentiment + sklearn-based text workflows |
+| Visualization | Plotly |
+| Testing | pytest |
 
-## Key Findings (from ~10,000 ticket sample)
+## Key findings from the sample dataset
 
-| # | Opportunity | Annual Impact | Confidence | Priority | Effort | Timeline |
-|---|---|---|---|---|---|---|
-| 1 | Email → Chat Deflection (20% of email) | $215,731 | ★★★ | P0 | Low | 4 weeks |
-| 2 | Chatbot Escalation Reduction (25.7% → 15%) | $192,408 | ★★★ | P0 | Low | 4 weeks |
-| 3 | Abandoned Ticket Prevention (8.3% → 4%) | $199,861 | ★★☆ | P0 | Medium | 6 weeks |
-| 4 | BPO Vendor B Quality Program (CSAT 2.99 → 3.24) | $49,561 | ★★☆ | P1 | Medium | 6 weeks |
-| 5 | Proactive CSAT Recovery (10% of detractors) | $184,176 | ★☆☆ | P2 | Medium | 6 weeks |
-| | **Total** | **$841,737** | | | | |
+Top modeled opportunities identified in the analysis:
 
-*Extrapolated from 10K sample using 144× multiplier (12× scale to 120K/month × 12 months). Confidence tiers: ★★★ = direct cost savings, ★★☆ = mixed hard + behavioral, ★☆☆ = revenue protection estimates.*
+| Rank | Opportunity | Estimated Annual Impact |
+|---|---|---:|
+| 1 | Email to chat deflection | $215,731 |
+| 2 | Abandonment reduction | $199,861 |
+| 3 | Chatbot escalation reduction | $192,408 |
+| 4 | Proactive CSAT recovery | $184,176 |
+| 5 | Vendor B quality improvement | $49,561 |
+|  | **Total modeled impact** | **$841,737** |
 
-## Quick Start
+A few representative findings:
 
-### 1. Clone and install
+- Email is the largest and one of the least efficient channels
+- Refund and order-status tickets drive a large share of workload
+- Vendor B materially underperforms on speed and CSAT
+- The chatbot is extremely cheap and fast, but escalates too often in the wrong categories
+- Volume rises across the complete weeks without clear efficiency gains
+
+## Repository structure
+
+```text
+G/
+├── data/                       # Input dataset
+├── docs/                       # Assignment materials
+├── notebooks/                  # EDA notebook
+├── output/                     # Generated artifacts
+├── slides/                     # Slide content and roadmap notes
+├── src/
+│   ├── analytics.py
+│   ├── config.py
+│   ├── data_cleaning.py
+│   ├── nlp_analysis.py
+│   ├── visualizations.py
+│   ├── agent/
+│   └── app/
+├── tests/
+├── requirements.txt
+└── README.md
+```
+
+## Local setup
+
+### 1. Create a virtual environment
 
 ```bash
 git clone <repo-url>
 cd G
 python -m venv .venv
+```
 
-# Windows
-.venv\Scripts\activate
-# macOS/Linux
+**Windows (PowerShell)**
+
+```powershell
+.venv\Scripts\Activate.ps1
+```
+
+**macOS / Linux**
+
+```bash
 source .venv/bin/activate
+```
 
+### 2. Install dependencies
+
+```bash
 pip install -r requirements.txt
 ```
 
-### 2. Configure environment
+### 3. Configure environment variables
+
+Copy [.env.example](.env.example) to `.env` and add your Groq API key:
+
+```dotenv
+GROQ_API_KEY=your-groq-api-key-here
+```
+
+### 4. Run the app
 
 ```bash
-cp .env.example .env
-# Edit .env and add your GROQ_API_KEY (free Groq API key)
-# Get one at: https://console.groq.com/keys
+streamlit run src/app/streamlit_app.py
 ```
 
-### 3. Run the dashboard
+### 5. Run tests
 
 ```bash
-# Windows (PowerShell)
-$env:PYTHONPATH = (Get-Location).Path
-streamlit run src/app/streamlit_app.py --server.headless true
-
-# macOS/Linux
-PYTHONPATH=$(pwd) streamlit run src/app/streamlit_app.py
+pytest tests/ --tb=short -q
 ```
 
-### 4. Run tests
+## Data and methodology notes
 
-```bash
-# Windows (PowerShell)
-$env:PYTHONPATH = (Get-Location).Path
-pytest tests/ -v
+- Source data: [data/option_a_ticket_data.csv](data/option_a_ticket_data.csv)
+- Comparable weeks: **7–10**
+- Week 11 is partial and excluded from week-over-week interpretation
+- Raw data is not modified in place
+- Opportunity sizing uses explicit scale assumptions from the project config and analysis
 
-# macOS/Linux
-PYTHONPATH=$(pwd) pytest tests/ -v
-```
+## Notes for reviewers
 
-### 5. Explore the EDA notebook
+If reviewing quickly, the best path is:
 
-Open `notebooks/eda_analysis.ipynb` in VS Code or Jupyter for the full exploratory analysis with interactive Plotly charts.
+1. Open the app in [src/app/streamlit_app.py](src/app/streamlit_app.py)
+2. Review the EDA in [notebooks/eda_analysis.ipynb](notebooks/eda_analysis.ipynb)
+3. Inspect the agent flow in [src/agent/graph.py](src/agent/graph.py)
+4. Check the tests in [tests](tests)
 
-## Project Structure
+## Limitations
 
-```
-├── data/                    # Raw ticket data (10K tickets)
-├── src/
-│   ├── config.py            # Configuration constants
-│   ├── data_cleaning.py     # Data loading and cleaning
-│   ├── analytics.py         # Statistical analysis functions
-│   ├── nlp_analysis.py      # NLP: sentiment, frustration, topics
-│   ├── visualizations.py    # Plotly chart functions
-│   ├── agent/               # LangGraph agent pipeline
-│   │   ├── state.py         # TypedDict state definition
-│   │   ├── tools.py         # Agent tools (pure Python)
-│   │   ├── nodes.py         # Pipeline nodes (7 stages)
-│   │   ├── graph.py         # Graph assembly with fan-out/fan-in
-│   │   └── prompts.py       # LLM system prompts
-│   └── app/                 # Streamlit application
-│       ├── streamlit_app.py # Main 5-tab dashboard
-│       ├── components.py    # Reusable UI components
-│       └── styles.py        # Custom CSS (Groupon branding)
-├── notebooks/
-│   └── eda_analysis.ipynb   # Full EDA with 22 sections
-├── output/                  # Generated reports and charts
-└── tests/                   # Test suite (25 tests)
-```
-
-## Data Notes
-
-- **Source**: `data/option_a_ticket_data.csv` — 10,000 tickets, 16 columns
-- **Date range**: Feb 9 – Mar 10, 2026 (Weeks 7–11)
-- **Week 11**: Partial (224 tickets only) — excluded from week-over-week comparisons
-- **Scale factor**: 12x (sample → estimated Groupon monthly volume of 120K tickets)
-- **Cleaning**: 31 market labels normalized, 53 CSAT scores clamped, 71 negative resolution times fixed; no rows dropped
-- **Imputation**: KNN (k=5, distance-weighted) for CSAT and FRT; resolution time for abandoned/pending tickets remains NaN (structurally absent)
-
-## Business Case
-
-This project was built as part of a business case assignment for the **Chief of Staff - Global Operations (AI-First)** position at Groupon Madrid. It demonstrates:
-
-1. **Analytical depth**: Cleaning messy data, extracting signal, sizing opportunities
-2. **AI-first thinking**: Agent-based architecture, not just dashboards
-3. **Technical execution**: Working prototype, not just slides
-4. **Strategic clarity**: Connecting operational metrics to business impact
-5. **Communication**: Executive-ready outputs and clear presentation
+- The dataset is synthetic and intentionally noisy
+- Annualized impact depends on stated scale assumptions
+- LLM-backed stages depend on API availability and rate limits
+- The current version is a prototype, not a production deployment

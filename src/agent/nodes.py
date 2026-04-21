@@ -16,7 +16,7 @@ from io import StringIO
 
 import pandas as pd
 from langchain_groq import ChatGroq
-from langchain_core.messages import HumanMessage, SystemMessage
+from langchain_core.messages import HumanMessage, SystemMessage, AIMessage, ToolMessage
 
 from src.agent.prompts import (
     EXECUTIVE_INSIGHTS_PROMPT,
@@ -57,12 +57,15 @@ def _get_llm(model: str | None = None) -> ChatGroq:
     )
 
 
-def _invoke_with_retry(llm: ChatGroq, messages: list, *, label: str = "LLM") -> str:
-    """Invoke the LLM with exponential backoff on 429 / rate-limit errors."""
+def _invoke_with_retry(llm: ChatGroq, messages: list, *, label: str = "LLM"):
+    """Invoke the LLM with exponential backoff on 429 / rate-limit errors.
+    
+    Returns the full response object (which may include tool_calls for tool-bound LLMs).
+    """
     for attempt in range(_MAX_RETRIES):
         try:
             response = llm.invoke(messages)
-            return response.content
+            return response  # Return full response to preserve tool_calls
         except Exception as e:
             err_str = str(e)
             is_rate_limit = "429" in err_str or "rate" in err_str.lower()
@@ -83,6 +86,16 @@ def node_ingest_data(state: AgentState) -> dict:
     """Load raw data from CSV and store path + row count."""
     logger.info("Node: ingest_data -- loading CSV")
     path = state.get("raw_df_path") or str(RAW_DATA_PATH)
+
+    precomputed_rows = state.get("raw_row_count")
+    if isinstance(precomputed_rows, int) and precomputed_rows > 0:
+        return {
+            "raw_df_path": path,
+            "raw_row_count": precomputed_rows,
+            "current_step": "data_ingested",
+            "execution_log": [f"Using ingest metadata: {precomputed_rows:,} rows"],
+        }
+
     raw_df = load_raw_data(path)
     return {
         "raw_df_path": path,
@@ -98,6 +111,17 @@ def node_ingest_data(state: AgentState) -> dict:
 def node_data_quality(state: AgentState) -> dict:
     """Clean data and run quality checks."""
     logger.info("Node: data_quality -- cleaning data")
+
+    precomputed_clean = state.get("clean_df_serialized")
+    precomputed_quality = state.get("data_quality")
+    if precomputed_clean and precomputed_quality:
+        return {
+            "clean_df_serialized": precomputed_clean,
+            "data_quality": precomputed_quality,
+            "current_step": "data_cleaned",
+            "execution_log": ["Using cleaned dataset and data quality report"],
+        }
+
     path = state.get("raw_df_path") or str(RAW_DATA_PATH)
     raw_df = load_raw_data(path)
     clean_df, cleaning_log = clean_data(raw_df)
@@ -121,6 +145,21 @@ def node_data_quality(state: AgentState) -> dict:
 def node_trend_analysis(state: AgentState) -> dict:
     """Compute all trend and performance metrics."""
     logger.info("Node: trend_analysis")
+
+    if (
+        state.get("kpi_summary")
+        and state.get("weekly_trends")
+        and state.get("team_performance")
+        and state.get("channel_performance")
+        and state.get("category_performance")
+        and state.get("wow_kpis")
+    ):
+        complete_weeks = state.get("complete_weeks", [])
+        week_count = len(complete_weeks) if isinstance(complete_weeks, list) else 0
+        return {
+            "execution_log": [f"Using trend analysis ({week_count} complete weeks)"],
+        }
+
     df = pd.read_json(StringIO(state["clean_df_serialized"]))
 
     # Dynamically detect complete weeks from the data
@@ -161,6 +200,24 @@ def node_trend_analysis(state: AgentState) -> dict:
 def node_anomaly_detection(state: AgentState) -> dict:
     """Detect anomalies and analyze chatbot escalations."""
     logger.info("Node: anomaly_detection")
+
+    precomputed_anomalies = state.get("anomalies")
+    precomputed_chatbot = state.get("chatbot_escalation")
+    if precomputed_anomalies and precomputed_chatbot:
+        total_outliers = sum(
+            v.get("total_outliers", 0)
+            for v in precomputed_anomalies.values()
+            if isinstance(v, dict)
+        )
+        return {
+            "anomalies": precomputed_anomalies,
+            "chatbot_escalation": precomputed_chatbot,
+            "execution_log": [
+                f"Using anomaly analysis: {total_outliers} outliers, "
+                f"chatbot escalation rate {precomputed_chatbot.get('overall_escalation_rate', 'N/A')}"
+            ],
+        }
+
     df = pd.read_json(StringIO(state["clean_df_serialized"]))
 
     anomalies = {}
@@ -191,6 +248,17 @@ def node_anomaly_detection(state: AgentState) -> dict:
 def node_nlp_analysis(state: AgentState) -> dict:
     """Run NLP pipeline on ticket text."""
     logger.info("Node: nlp_analysis")
+
+    precomputed_nlp = state.get("nlp_summary")
+    if precomputed_nlp:
+        return {
+            "nlp_summary": precomputed_nlp,
+            "execution_log": [
+                f"Using NLP summary: frustration rate {precomputed_nlp.get('frustration_rate', 'N/A')}, "
+                f"avg sentiment {precomputed_nlp.get('avg_sentiment_polarity', 'N/A')}"
+            ],
+        }
+
     df = pd.read_json(StringIO(state["clean_df_serialized"]))
     nlp = json.loads(tool_nlp_analysis(df))
 
@@ -204,14 +272,47 @@ def node_nlp_analysis(state: AgentState) -> dict:
 
 
 # ---------------------------------------------------------------------------
-# Node 4: Opportunity Scoring (LLM-powered)
+# Node 4: Opportunity Scoring (LLM-powered, AGENTIC with tool calling)
 # ---------------------------------------------------------------------------
 def node_opportunity_scoring(state: AgentState) -> dict:
-    """Use LLM to identify and score improvement opportunities."""
-    logger.info("Node: opportunity_scoring")
+    """Use agentic LLM to identify opportunities via tool calling and reasoning.
+    
+    This node demonstrates true agentic behavior:
+    - LLM receives initial KPIs and decides what to investigate
+    - LLM calls tools to analyze specific areas
+    - LLM interprets results and decides next steps
+    - Loop continues up to 3 times (to control costs on Groq free tier)
+    - Final LLM call synthesizes findings into opportunities
+    """
+    logger.info("Node: opportunity_scoring (AGENTIC)")
+    
+    from src.agent.tools import (
+        investigate_chatbot_performance,
+        analyze_team_performance,
+        check_category_issues,
+        find_cost_outliers,
+        verify_kpis_with_trends,
+        verify_with_correlation_analysis,
+        build_tool_executor,
+    )
+    
+    df = pd.read_json(StringIO(state["clean_df_serialized"]))
     llm = _get_llm(LLM_MODEL_ANALYSIS)
-
-    # Build WoW summary for temporal context
+    
+    # Define tools for LLM calling (will be bound dynamically in loop)
+    tools_list = [
+        investigate_chatbot_performance,
+        analyze_team_performance,
+        check_category_issues,
+        find_cost_outliers,
+        verify_kpis_with_trends,
+        verify_with_correlation_analysis,
+    ]
+    
+    # Build tool executor with DataFrame bound via closure
+    tool_executors = build_tool_executor(df)
+    
+    # Build initial context for LLM
     wow = state.get("wow_kpis", {})
     date_ranges = state.get("week_date_ranges", {})
     _cw = state.get("complete_weeks", COMPLETE_WEEKS)
@@ -220,62 +321,169 @@ def node_opportunity_scoring(state: AgentState) -> dict:
 
     temporal_context = {
         "analysis_period": f"Weeks {min(_cw)}-{max(_cw)}" if _cw else "All weeks",
-        "week_date_ranges": date_ranges,
         "current_week": cur_wk,
         "prior_week": pri_wk,
-        "current_week_kpis": wow.get("current", {}),
-        "prior_week_kpis": wow.get("prior", {}),
-        "wow_deltas": wow.get("deltas", {}),
+        "current_week_dates": date_ranges.get(cur_wk, ""),
+        "prior_week_dates": date_ranges.get(pri_wk, ""),
     }
 
-    # Build a concise context for the LLM
-    context = json.dumps(
-        {
-            "temporal_context": temporal_context,
-            "kpis": state.get("kpi_summary", {}),
-            "team_performance": state.get("team_performance", []),
-            "chatbot_escalation": state.get("chatbot_escalation", {}),
-            "nlp_summary": {
-                k: v
-                for k, v in state.get("nlp_summary", {}).items()
-                if k != "topics"  # topics can be large; omit for token saving
-            },
-            "anomalies": {
-                k: {"total_outliers": v.get("total_outliers", 0)}
-                for k, v in state.get("anomalies", {}).items()
-            },
-            "weekly_trends": state.get("weekly_trends", []),
-        },
-        indent=2,
-        default=str,
-    )
+    # Compact initial KPI summary for LLM
+    kpi = state.get("kpi_summary", {})
+    initial_kpis = {
+        k: kpi.get(k) for k in [
+            "total_tickets", "resolution_rate", "escalation_rate",
+            "abandonment_rate", "avg_first_response_min", "avg_csat",
+            "avg_cost_usd",
+        ] if k in kpi
+    }
+    
+    # Add WoW deltas for context
+    wow_deltas = wow.get("deltas", {})
+    for key in list(initial_kpis.keys()):  # Iterate over copy of keys to avoid "dict changed size" error
+        if key in wow_deltas:
+            initial_kpis[f"{key}_wow_change"] = wow_deltas[key].get("abs_change")
 
+    initial_context = json.dumps({
+        "temporal_context": temporal_context,
+        "current_kpis": initial_kpis,
+        "note": "Use tools below to investigate specific areas and identify improvement opportunities.",
+    }, indent=2, default=str)
+
+    # ── Agentic Loop ──
     messages = [
         SystemMessage(content=OPPORTUNITY_SCORING_PROMPT),
-        HumanMessage(content=f"Here is the analytical context:\n\n{context}"),
+        HumanMessage(content=f"Here is the initial analytical context:\n\n{initial_context}\n\n"
+                            "Decide what to investigate and use the available tools to uncover improvement opportunities."),
     ]
+    
+    tool_calls_made = []
+    max_iterations = 2  # Control costs on Groq free tier (avoid rate limits)
+    iteration = 0
+    opportunities = []
+    reasoning_trail = []
+    
+    while iteration < max_iterations:
+        iteration += 1
+        logger.info(f"Opportunity scoring agentic loop - iteration {iteration}/{max_iterations}")
+        reasoning_trail.append(f"Iteration {iteration}: Invoking LLM with tools...")
+        
+        try:
+            # On first iteration, force tool usage. On later iterations, use plain LLM for JSON finalization.
+            if iteration == 1:
+                # Force the LLM to call a tool on iteration 1 (investigation phase)
+                llm_configured = llm.bind_tools(tools_list, tool_choice="required")
+            else:
+                # On iteration 2+, use plain LLM (no tools) to avoid tool_use_failed errors
+                # The LLM will output JSON directly
+                llm_configured = llm
+            
+            response = _invoke_with_retry(llm_configured, messages, label="opportunity_scoring")
+        except Exception as e:
+            logger.error(f"LLM call failed in opportunity loop iteration {iteration}: {e}")
+            reasoning_trail.append(f"Iteration {iteration}: LLM call failed - {e}")
 
-    try:
-        content = _invoke_with_retry(llm, messages, label="opportunity_scoring")
-
-        # Strip markdown code fences if present
-        content = re.sub(r"^```(?:json)?\s*", "", content.strip())
-        content = re.sub(r"\s*```$", "", content.strip())
-
-        opportunities = json.loads(content)
-        if isinstance(opportunities, dict) and "opportunities" in opportunities:
-            opportunities = opportunities["opportunities"]
-    except json.JSONDecodeError:
-        logger.warning("Failed to parse LLM opportunity response as JSON")
-        opportunities = []
-    except Exception as e:
-        logger.error("LLM call failed in opportunity_scoring: %s", e)
-        opportunities = []
+            break
+        
+        # Check if LLM wants to use tools or has finalized
+        if hasattr(response, "tool_calls") and response.tool_calls:
+            # LLM wants to call tools
+            tool_calls = response.tool_calls
+            reasoning_trail.append(f"Iteration {iteration}: LLM decided to call {len(tool_calls)} tool(s): "
+                                 f"{', '.join(tc['name'] for tc in tool_calls)}")
+            
+            # Add LLM response to message history (this is the response with tool_calls)
+            messages.append(response)
+            
+            # Execute each tool call
+            for tool_call in tool_calls:
+                tool_name = tool_call["name"]
+                tool_calls_made.append(tool_name)
+                
+                logger.info(f"Executing tool: {tool_name}")
+                try:
+                    # Execute the tool using the executor
+                    executor = tool_executors.get(tool_name)
+                    if executor:
+                        result = executor()
+                        # Append ToolMessage with the result
+                        messages.append(ToolMessage(
+                            tool_call_id=tool_call.get("id", tool_name),
+                            name=tool_name,
+                            content=result,
+                        ))
+                        reasoning_trail.append(f"  → Tool '{tool_name}' executed successfully ({len(result)} chars returned)")
+                    else:
+                        logger.warning(f"No executor found for tool: {tool_name}")
+                        messages.append(ToolMessage(
+                            tool_call_id=tool_call.get("id", tool_name),
+                            name=tool_name,
+                            content=json.dumps({"error": f"Tool executor not found: {tool_name}"}),
+                        ))
+                except Exception as e:
+                    logger.error(f"Tool execution failed for {tool_name}: {e}")
+                    reasoning_trail.append(f"  → Tool '{tool_name}' failed: {e}")
+                    messages.append(ToolMessage(
+                        tool_call_id=tool_call.get("id", tool_name),
+                        name=tool_name,
+                        content=json.dumps({"error": str(e)}),
+                    ))
+            
+            # Add guidance to continue reasoning
+            messages.append(HumanMessage(
+                content="Based on these tool results, continue investigating or finalize the opportunities you've identified."
+            ))
+        
+        else:
+            # LLM has responded with final content (no tool calls)
+            # Check if it includes opportunities JSON
+            if hasattr(response, "content"):
+                content = response.content
+            else:
+                content = str(response)
+            
+            reasoning_trail.append(f"Iteration {iteration}: LLM finalized response (no tool calls)")
+            
+            try:
+                # Strip markdown code fences if present
+                content_clean = re.sub(r"^```(?:json)?\s*", "", content.strip())
+                content_clean = re.sub(r"\s*```$", "", content_clean.strip())
+                
+                result = json.loads(content_clean)
+                if isinstance(result, dict) and "opportunities" in result:
+                    opportunities = result["opportunities"]
+                elif isinstance(result, list):
+                    opportunities = result
+                else:
+                    opportunities = []
+                
+                reasoning_trail.append(f"Iteration {iteration}: Successfully parsed {len(opportunities)} opportunities")
+                logger.info(f"Opportunity scoring finalized: {len(opportunities)} opportunities identified")
+            except json.JSONDecodeError:
+                logger.warning(f"Failed to parse LLM final response as JSON on iteration {iteration}")
+                reasoning_trail.append(f"Iteration {iteration}: Failed to parse JSON from LLM response")
+                opportunities = []
+            
+            break  # Exit the loop
+    
+    if iteration >= max_iterations and not opportunities:
+        reasoning_trail.append(f"Reached max iterations ({max_iterations}) without finalizing opportunities")
+        logger.warning(f"Opportunity scoring reached max iterations without finalizing")
+    
+    # Build execution log entries showing the agentic process
+    execution_log = [
+        f"Agentic opportunity discovery initiated",
+        f"Analyzed KPIs: resolution={initial_kpis.get('resolution_rate', 'N/A')}, "
+        f"escalation={initial_kpis.get('escalation_rate', 'N/A')}, CSAT={initial_kpis.get('avg_csat', 'N/A')}",
+    ]
+    execution_log.extend(reasoning_trail)
+    execution_log.append(f"Completed: {len(opportunities)} opportunities identified after {iteration} iterations")
+    if tool_calls_made:
+        execution_log.append(f"Tools called during reasoning: {', '.join(set(tool_calls_made))}")
 
     return {
         "opportunities": opportunities,
         "current_step": "opportunities_scored",
-        "execution_log": [f"Identified {len(opportunities)} opportunities"],
+        "execution_log": execution_log,
     }
 
 
@@ -380,7 +588,8 @@ def node_report_generation(state: AgentState) -> dict:
                 content=f"Generate the weekly brief from this data:\n\n{context}"
             ),
         ]
-        report = _invoke_with_retry(llm, messages, label="report_generation")
+        response = _invoke_with_retry(llm, messages, label="report_generation")
+        report = response.content if hasattr(response, 'content') else str(response)
     except Exception as e:
         logger.error("LLM call failed in report_generation: %s", e)
         report = f"# Report Generation Failed\n\nError: {e}"
@@ -479,7 +688,8 @@ def node_executive_insights(state: AgentState) -> dict:
             SystemMessage(content=EXECUTIVE_INSIGHTS_PROMPT),
             HumanMessage(content=f"Generate executive insights from:\n\n{context}"),
         ]
-        content = _invoke_with_retry(llm, messages, label="executive_insights")
+        response = _invoke_with_retry(llm, messages, label="executive_insights")
+        content = response.content if hasattr(response, 'content') else str(response)
 
         content = re.sub(r"^```(?:json)?\s*", "", content.strip())
         content = re.sub(r"\s*```$", "", content.strip())

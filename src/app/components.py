@@ -293,7 +293,7 @@ def render_opportunities_tab(
             f"{title}  |  {impact}  |  {p_label}",
             expanded=(i == 0),
         ):
-            col1, col2, col3 = st.columns(3)
+            col1, col2, col3 = st.columns([3, 1, 1])
             _metric_card = (
                 '<div style="border-left: 3px solid #53A318; padding: 8px 12px;">'
                 '<span style="color: #53A318; font-size: 0.85em; font-weight: 600;">{label}</span><br>'
@@ -1450,6 +1450,69 @@ def _compute_watch_list(analytics: dict, nlp_results: dict) -> list[str]:
     return items
 
 
+def _format_execution_log(execution_log: list[str]) -> str:
+    """Format execution_log list into readable Markdown with structure and icons."""
+    if not execution_log:
+        return "No execution log available."
+    
+    markdown_lines = []
+    current_iteration = None
+    tool_section_started = False
+    
+    for entry in execution_log:
+        # Parse iteration statements
+        if "Iteration" in entry and "Invoking LLM" in entry:
+            # Extract iteration number
+            parts = entry.split("Iteration ")
+            if len(parts) > 1:
+                iter_num = parts[1].split(":")[0]
+                markdown_lines.append(f"\n**🔄 Iteration {iter_num}**")
+                markdown_lines.append(f"\n  {entry.strip()}")
+                current_iteration = iter_num
+                tool_section_started = False
+            else:
+                markdown_lines.append(f"- {entry.strip()}")
+        
+        # Parse tool call decisions
+        elif "LLM decided to call" in entry:
+            markdown_lines.append(f"\n  **LLM Action:** {entry.strip().replace('LLM decided to ', '').replace('Iteration X: ', '')}")
+            tool_section_started = True
+        
+        # Parse tool execution results
+        elif entry.strip().startswith("→ Tool"):
+            markdown_lines.append(f"\n  - {entry.strip()}")
+        
+        # Parse iteration completions
+        elif "LLM finalized" in entry:
+            markdown_lines.append(f"\n  ✅ {entry.strip()}")
+            tool_section_started = False
+        
+        # Parse completion summary
+        elif entry.startswith("Completed:"):
+            markdown_lines.append(f"\n✅ **Summary:** {entry.strip()}")
+        
+        # Parse tools called summary
+        elif "Tools called during reasoning" in entry:
+            tools_str = entry.replace("Tools called during reasoning:", "").strip()
+            markdown_lines.append(f"\n🛠️ **Tools Used:** {tools_str}")
+        
+        # Parse initial KPI analysis
+        elif entry.startswith("Analyzed KPIs:"):
+            kpis = entry.replace("Analyzed KPIs:", "").strip()
+            markdown_lines.append(f"\n📊 **Initial Analysis:** {kpis}")
+        
+        # Parse initiation
+        elif "Agentic opportunity discovery initiated" in entry:
+            markdown_lines.append(f"🤖 **{entry.strip()}**")
+        
+        # Generic entries
+        else:
+            if entry.strip():
+                markdown_lines.append(f"- {entry.strip()}")
+    
+    return "\n".join(markdown_lines)
+
+
 def render_weekly_brief_tab(
     analytics: dict,
     nlp_results: dict,
@@ -1495,7 +1558,35 @@ def render_weekly_brief_tab(
 
     st.divider()
 
-    # -- 2. Deterministic KPI Reference (grounded numbers) --
+    # -- 1.5 Watch List (emerging patterns) --
+    st.subheader("⚠️ Watch List — Emerging Patterns")
+    watch_items = _compute_watch_list(analytics, nlp_results)
+    if watch_items:
+        for item in watch_items:
+            st.markdown(f"- ⚠️ {item}")
+    else:
+        st.caption("No emerging patterns flagged this period.")
+
+    st.divider()
+
+    # -- 2. Agent Reasoning & Investigation Process --
+    if agent_result:
+        execution_log = agent_result.get("execution_log", [])
+        if execution_log:
+            st.subheader("🤖 Agent Reasoning & Investigation Process", divider="rainbow")
+            st.caption(
+                "This section shows how the AI agent investigated the data, "
+                "what tools it used, and how it reached its conclusions."
+            )
+            formatted_log = _format_execution_log(execution_log)
+            with st.expander("View Agent Execution Log", expanded=False):
+                st.markdown(formatted_log)
+        else:
+            st.caption("Agent reasoning log not available.")
+    
+    st.divider()
+
+    # -- 3. Deterministic KPI Reference (grounded numbers) --
     kpi_markdown = _generate_markdown_brief(
         analytics, nlp_results, quality_report, cleaning_log,
     )
@@ -1508,17 +1599,6 @@ def render_weekly_brief_tab(
             "and serve as the authoritative reference."
         )
         st.markdown(kpi_markdown)
-
-    st.divider()
-
-    # -- 3. Watch List (emerging patterns) --
-    st.subheader("⚠️ Watch List — Emerging Patterns")
-    watch_items = _compute_watch_list(analytics, nlp_results)
-    if watch_items:
-        for item in watch_items:
-            st.markdown(f"- ⚠️ {item}")
-    else:
-        st.caption("No emerging patterns flagged this period.")
 
     st.divider()
 
@@ -1578,14 +1658,5 @@ def render_weekly_brief_tab(
             mime="text/markdown",
             key="dl_md",
         )
-
-    # Agent execution log
-    if agent_result:
-        with st.expander("Agent Execution Log"):
-            log_entries = agent_result.get("execution_log", [])
-            for entry in log_entries:
-                st.write(f"- {entry}")
-            if not log_entries:
-                st.write("No execution logs found.")
 
 
