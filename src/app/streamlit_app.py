@@ -67,6 +67,7 @@ logger = logging.getLogger(__name__)
 # Constants
 # ---------------------------------------------------------------------------
 _LOGO_PATH = Path(__file__).resolve().parents[1] / "assets" / "logo.png"
+_FAVICON_PATH = Path(__file__).resolve().parents[1] / "assets" / "favicon.png"
 _PAGES = ["Dashboard", "NLP Insights", "Trends", "Opportunities", "Weekly Brief"]
 _AGENT_NODE_ORDER = [
     "ingest_data",
@@ -110,7 +111,7 @@ _STATE_KEYS = [
 # ---------------------------------------------------------------------------
 st.set_page_config(
     page_title="Customer Ops Command Center | Groupon",
-    page_icon=str(_LOGO_PATH) if _LOGO_PATH.exists() else None,
+    page_icon=str(_FAVICON_PATH) if _FAVICON_PATH.exists() else None,
     layout="wide",
     initial_sidebar_state="expanded",
 )
